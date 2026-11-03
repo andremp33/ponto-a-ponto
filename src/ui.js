@@ -146,6 +146,15 @@ export function radar(el, series) {
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin:0 auto;overflow:visible" role="img" aria-label="${esc('Perfil mental. ' + desc.join('. '))}">${g}</svg>`;
 }
 
+/** Até 5 marcas redondas (1, 2, 5 × 10ⁿ) entre mn e mx; a escala 1–10 fica 1, 4, 7, 10. */
+function niceTicks(mn, mx) {
+  if (mn === 1 && mx === 10) return [1, 4, 7, 10];
+  const span = mx - mn || 1, raw = span / 4, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => span / s <= 4) || 10 * mag;
+  const out = [];
+  for (let v = Math.ceil(mn / step) * step; v <= mx + 1e-9; v += step) out.push(Math.round(v * 1000) / 1000);
+  return out;
+}
 export function lineChart(el, series, opts = {}) {
   if (!el) return;
   const W = el.clientWidth || 320, H = 180, pl = 30, pr = 14, pt = 16, pb = 26;
@@ -153,9 +162,9 @@ export function lineChart(el, series, opts = {}) {
   const mn = opts.min ?? 1, mx = opts.max ?? 10, fmt = opts.fmt || f1;
   const x = i => n === 1 ? pl + (W - pl - pr) / 2 : pl + i * (W - pl - pr) / (n - 1);
   const y = v => pt + (mx - v) * (H - pt - pb) / (mx - mn);
-  const ticks = [mn, mn + (mx - mn) / 3, mn + 2 * (mx - mn) / 3, mx].map(v => Math.round(v * 10) / 10);
+  const ticks = niceTicks(mn, mx);
   let g = '';
-  ticks.forEach(v => { g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}"/><text x="${pl - 8}" y="${y(v) + 4}" fill="${C.ink3}" font-size="11" text-anchor="end">${(mx - mn) < 6 ? f1(v) : Math.round(v)}</text>`; });
+  ticks.forEach(v => { g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}"/><text x="${pl - 8}" y="${y(v) + 4}" fill="${C.ink3}" font-size="11" text-anchor="end">${Number.isInteger(v) ? v : f1(v)}</text>`; });
   const labels = opts.labels || [];
   [0, n - 1].forEach(i => { if (labels[i] && !(i === n - 1 && n === 1 && i !== 0)) g += `<text x="${x(i)}" y="${H - 6}" fill="${C.ink3}" font-size="11" text-anchor="${n === 1 ? 'middle' : i === 0 ? 'start' : 'end'}">${esc(labels[i])}</text>`; });
   let p = '';
@@ -165,7 +174,7 @@ export function lineChart(el, series, opts = {}) {
     pts.forEach(([a, b]) => { p += `<circle cx="${a}" cy="${b}" r="4" fill="${s.color}" stroke="${C.paper}" stroke-width="2"/>`; });
   });
   let hits = ''; const w = (W - pl - pr) / Math.max(1, n - 1);
-  for (let i = 0; i < n; i++) hits += `<rect x="${x(i) - w / 2}" y="0" width="${n === 1 ? W : w}" height="${H}" fill="transparent" data-i="${i}"/>`;
+  for (let i = 0; i < n; i++) { const a = n === 1 ? 0 : Math.max(0, x(i) - w / 2), b = n === 1 ? W : Math.min(W, x(i) + w / 2); hits += `<rect x="${a}" y="0" width="${b - a}" height="${H}" fill="transparent" data-i="${i}"/>`; }
   const summary = series.map(s => `${s.name}: ${s.values.map((v, i) => `${labels[i] || i + 1} ${v != null ? fmt(v) : '–'}`).join(', ')}`).join('. ');
   el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(summary)}">${g}${p}<line class="xh" y1="${pt}" y2="${H - pb}" stroke="${C.ink3}" style="display:none"/>${hits}</svg><div class="tip" role="presentation"></div>`;
   const tip = el.querySelector('.tip'), xh = el.querySelector('.xh');
@@ -193,7 +202,7 @@ export function heatmap(el, counts, dayKey) {
       const dt = new Date(start); dt.setDate(start.getDate() + w * 7 + d);
       const k = dayKey(dt), v = counts[k] || 0, lvl = v === 0 ? 0 : v < 2 ? 1 : v < 4 ? 2 : 3;
       if (v && dt <= today) active++;
-      const label = dt.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }) + `: ${v} ${v === 1 ? 'atividade' : 'atividades'}`;
+      const label = `${dt.getDate()}/${dt.getMonth() + 1}` + `: ${v} ${v === 1 ? 'atividade' : 'atividades'}`;
       c += `<i style="background:${dt > today ? 'transparent' : heatColor(lvl)}" title="${label}"></i>`;
     }
     cols += `<div class="col">${c}</div>`;

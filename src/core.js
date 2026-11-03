@@ -31,10 +31,11 @@ const notify = (m, ms) => hooks.toast(m, ms);
 export function clone(o) { return JSON.parse(JSON.stringify(o)); }
 export const dayKey = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 export const TODAY = () => dayKey(Date.now());
-export const fmtDate = ts => new Date(ts).toLocaleDateString('pt-PT', { weekday: 'short', day: 'numeric', month: 'short' });
-export const shortDate = ts => new Date(ts).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+export const shortDate = ts => { const d = new Date(ts); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+export const fmtDate = ts => `${new Date(ts).toLocaleDateString('pt-PT', { weekday: 'long' })}, ${shortDate(ts)}`;
 export const longDate = (ts = Date.now()) => new Date(ts).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
-export const isoDate = s => s ? new Date(s + 'T12:00').toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+export const isoDate = s => { if (!s) return ''; const d = new Date(s + 'T12:00'); return shortDate(d) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''); };
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 export const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 export const daysUntil = d => Math.round((new Date(d + 'T12:00').getTime() - new Date(TODAY() + 'T12:00').getTime()) / 864e5);
