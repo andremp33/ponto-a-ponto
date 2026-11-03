@@ -1,0 +1,14 @@
+{
+  "name": "ponto-a-ponto",
+  "private": true,
+  "type": "module",
+  "description": "Treino mental de ténis (PWA sem build). As dependências só servem para testes e ícones.",
+  "scripts": {
+    "serve": "python -m http.server 8000",
+    "icons": "node tools/make-icons.mjs",
+    "test": "node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
