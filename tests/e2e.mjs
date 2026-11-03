@@ -73,7 +73,7 @@ await ctx.addInitScript(() => {
   // Sem folha de partilha no headless: a cópia de segurança cai no download.
   try { delete Navigator.prototype.share; delete Navigator.prototype.canShare; } catch {}
 });
-const page = await ctx.newPage();
+let page = await ctx.newPage();
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -318,6 +318,90 @@ try {
 } catch (e) {
   problems.push('Falhou: ' + e.message.split('\n')[0]);
   await page.screenshot({ path: join(OUT, 'zz-falha.png'), fullPage: true }).catch(() => {});
+}
+
+
+/* ===================== Cenário 2: grátis (sem chave) ===================== */
+// Motor WebLLM falso: mesma interface (CreateMLCEngine, chat.completions.create), sem descarregar nada.
+const FAKE_WEBLLM = `
+const card = { plano: 'Plano local: esquerda dele com bolas altas.', plano_a: 'Bolas altas para a esquerda.', plano_b: 'Mais peso ao centro.', padroes: ['Bola alta para a esquerda'], chaves: ['Pés', 'Respira', 'Solta'], primeiros_jogos: 'Margem.', se_correr_mal: 'Muda para o B.', reset: 'Larga, corrige, compromete.', ativacao: 'Respira.', visualizacao: 'Fecha os olhos. Respira. Serves com margem.', sugestoes: ['Ele é canhoto'] };
+function fake(t) {
+  if (/Propuseste isto/.test(t)) return { ...card, plano: 'Plano local ajustado para um canhoto.', resposta: 'Ajustei no telemóvel.', sugestoes: ['Ok'] };
+  if (/preparar o plano/.test(t)) return card;
+  return { titulo: 'Plano local', texto: 'Texto gerado no telemóvel.', acao: 'Faz a rotina.', resumo: 'Análise local.', a_trabalhar: 'Foco.', exercicio: 'Respiração.', foco_proximo: 'Um ponto de cada vez', sugestoes: ['Ok'] };
+}
+export async function CreateMLCEngine(id, opts = {}) {
+  window.__llmModel = id;
+  for (const p of [0.1, 0.6, 1]) { opts.initProgressCallback?.({ progress: p, text: 'a carregar' }); await new Promise(r => setTimeout(r, 60)); }
+  return { unload: async () => {}, chat: { completions: { create: async (req) => {
+    window.__llmCalls = (window.__llmCalls || 0) + 1;
+    if (req.messages.reduce((n, m) => n + m.content.length, 0) > 14000) throw new Error('contexto demasiado grande para 4096 tokens');
+    const txt = req.response_format ? JSON.stringify(fake(req.messages.at(-1).content)) : 'Olá! Esta semana proponho treinar a rotina antes do serviço. Começamos hoje?';
+    if (req.stream) return (async function* () { for (const w of txt.match(/.{1,8}/g)) yield { choices: [{ delta: { content: w } }] }; })();
+    return { choices: [{ message: { content: txt } }] };
+  } } } };
+}
+export async function hasModelInCache() { return true; }
+export async function deleteModelAllInfoInCache() {}
+`;
+try {
+  step('\nCenário grátis: coach offline');
+  const before = calls.length;
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-PT' });
+  await ctx2.route('https://api.anthropic.com/**', r => { calls.push({ headers: r.request().headers(), body: {} }); return r.abort(); });
+  await ctx2.route('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@*/**', r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/javascript' }, body: FAKE_WEBLLM }));
+  await ctx2.addInitScript(() => {
+    if (!localStorage.getItem('pap_v3')) localStorage.setItem('pap_v3', JSON.stringify({ profile: { onboarded: true, name: 'Rita', baseline: { confianca: 6, foco: 4, emocoes: 5, reset: 5, pressao: 3, rotinas: 5, corpo: 6, dialogo: 5 }, strength: 'Direita' }, state: {}, entries: [] }));
+    // O headless não tem GPU: simula um adaptador WebGPU para testar o fluxo.
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } });
+  });
+  page = await ctx2.newPage();
+  page.on('console', m => { if (m.type() === 'error') errors.push('[grátis] ' + m.text()); });
+  page.on('pageerror', e => errors.push('[grátis] pageerror: ' + e.message));
+  await page.goto(BASE); await page.waitForSelector('.brief h2');
+  await shot('gratis-hoje');
+  await click('.brief .scroller button:has-text("Estou cansado")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.brief .msg.a')].some(m => m.textContent.includes('leve')));
+  await page.evaluate(() => go('pre'));
+  await click('.chipset button:has-text("Esquerda fraca")'); await click('#preBtn'); await page.waitForSelector('.cues');
+  if (!(await page.locator('.panel.mt').first().innerText()).toLowerCase().includes('esquerda dele')) problems.push('[grátis] O cartão offline não usou o que o jogador sabe do adversário');
+  await click('.adjust .scroller button:has-text("Ele é canhoto")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('canhoto')));
+  await shot('gratis-cartao');
+  await page.evaluate(() => go('post')); await click('#postBtn'); await page.waitForSelector('.panel.ink');
+  await click('.adjust .scroller button:has-text("Os nervos foram o problema")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('controlo emocional')));
+  await shot('gratis-analise');
+  await page.evaluate(() => go('tournamentEdit'));
+  await page.fill('#tName', 'Torneio do clube'); await page.fill('#tStart', new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10));
+  await click('button:has-text("Guardar")'); await click('#tpBtn'); await page.waitForSelector('.check');
+  await page.evaluate(() => go('progress')); await click('#weekBtn'); await page.waitForSelector('#weekOut .panel');
+  await page.evaluate(() => go('coach')); await shot('gratis-coach');
+  await page.evaluate(() => go('settings')); await page.waitForTimeout(300); await shot('gratis-definicoes');
+  if (calls.length !== before) problems.push(`[grátis] ${calls.length - before} pedidos à API paga sem chave`);
+
+  step('Cenário grátis: IA no telemóvel');
+  await click('.item:has-text("IA no telemóvel")'); await page.waitForSelector('#gpuInfo svg');
+  await shot('gratis-local-antes');
+  await click('#dlBtn'); await page.waitForSelector('#locTest');
+  await click('#locTest'); await page.waitForSelector('#locOut .msg');
+  await shot('gratis-local-pronto');
+  await page.evaluate(() => go('pre')); await click('#preBtn'); await page.waitForSelector('.cues');
+  if (!(await page.locator('.panel.ink h2').innerText()).includes('Plano local')) problems.push('[local] O cartão não veio do modelo no telemóvel');
+  await click('.adjust .scroller button:has-text("Ele é canhoto")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('telemóvel')));
+  await page.evaluate(() => go('coach'));
+  await page.waitForFunction(() => S.chat[0]?.role === 'assistant' && !document.querySelector('#live'));
+  await page.fill('#chatIn', 'E amanhã?'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => S.chat.length >= 3 && !document.querySelector('#live'));
+  await shot('gratis-local-chat');
+  const llm = await page.evaluate(() => ({ calls: window.__llmCalls, model: window.__llmModel }));
+  step(`  ${llm.calls} pedidos ao modelo no telemóvel (${llm.model})`);
+  if (calls.length !== before) problems.push(`[local] ${calls.length - before} pedidos à API paga`);
+  await ctx2.close();
+} catch (e) {
+  problems.push('Falhou (grátis): ' + e.message.split('\n')[0]);
+  await page.screenshot({ path: join(OUT, 'zz-falha-gratis.png'), fullPage: true }).catch(() => {});
 }
 
 await browser.close(); server.close();

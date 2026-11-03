@@ -10,12 +10,12 @@ const CHAT_RULES = 'Vais conversar com o jogador. Respostas curtas (normalmente 
 function coach() {
   const mem = S.profile.coachMemory || [];
   return `<h1>Coach</h1><p class="lede">Conhece o teu perfil, os teus objetivos e os teus últimos registos.</p>
-  ${hasAI() ? '' : `<div class="mb">${aiOff('o coach')}</div>`}
+  ${hasAI() ? '' : `<div class="mb">${aiOff('conversar com o coach')}</div>`}
   <details class="more"><summary>O que o coach sabe sobre ti (${mem.length})</summary><div class="inner flush">
     ${mem.length ? mem.map((m, i) => `<div class="mem"><span>${esc(m.t)}</span><button onclick="memDel(${i})" aria-label="Apagar esta nota">${ic('x')}</button></div>`).join('') : '<p class="hint" style="margin:0 16px 8px">Ainda nada. O coach vai aprendendo com os teus jogos e conversas.</p>'}
     <div class="row" style="padding:8px 16px 8px"><input type="text" id="memIn" aria-label="Nova nota para o coach" placeholder="Algo que o coach deve saber"><button class="btn small" onclick="memAdd()" aria-label="Acrescentar nota">${ic('plus')}</button></div>
   </div></details>
-  <div class="chat" id="chat" aria-live="polite">${S.chat.length ? S.chat.map(m => `<div class="msg ${m.role === 'user' ? 'u' : 'a'}">${esc(m.content)}</div>`).join('') : hasAI() ? '' : `<div class="msg a">Olá${S.profile.name ? ' ' + esc(S.profile.name) : ''}! Sou o teu coach mental e de estratégia. Ativa-me nas Definições e eu preparo os teus jogos, o teu dia e os teus torneios.</div>`}<div id="chatEnd"></div></div>
+  <div class="chat" id="chat" aria-live="polite">${S.chat.length ? S.chat.map(m => `<div class="msg ${m.role === 'user' ? 'u' : 'a'}">${esc(m.content)}</div>`).join('') : hasAI() ? '' : `<div class="msg a">Olá${S.profile.name ? ' ' + esc(S.profile.name) : ''}! Sou o teu coach mental e de estratégia. Já preparo o teu dia, os jogos e os torneios no modo offline. Para conversarmos livremente, liga a IA no telemóvel nas Definições: é grátis.</div>`}<div id="chatEnd"></div></div>
   <div class="scroller">${SUGG.map(s => `<button onclick="sendChat(${J(s)})">${esc(s)}</button>`).join('')}</div>
   <div class="composer"><textarea id="chatIn" rows="1" aria-label="Mensagem para o coach" placeholder="Escreve…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px'">${esc(S.chatDraft || '')}</textarea><button class="btn" id="sendBtn" onclick="sendChat()" aria-label="Enviar">${ic('send')}</button></div>
   ${S.chat.length ? `<button class="btn text" onclick="newChat()">Nova conversa</button>` : ''}`;

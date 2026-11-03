@@ -1,6 +1,7 @@
 /* Jogos e treinos: registar, preparar, rever, refletir e ver um registo */
 import { S, PK, PN, CHECK, uid, dayKey, TODAY, daysUntil, fmtDate, ofType, mentalIndex, saveEntry, deleteEntry, plan, go, back, replace, render } from '../core.js';
-import { askJSON, hasAI, aiBtn, aiOff, aiSections, addMemory, entryLine } from '../ai.js';
+import { coachJSON, aiBtn, aiSections, addMemory, entryLine } from '../ai.js';
+import * as rules from '../rules.js';
 import { adjustBlock } from './adjust.js';
 import { studyLink } from './science.js';
 import { $, esc, J, ic, f1, bar, item, group, secTitle, slider, seg, chipset, chipVals, formData, pillarSliders, sheet, closeLayer, confirmBox, toast } from '../ui.js';
@@ -22,27 +23,24 @@ function tournamentSelect(sel = '') {
 
 /* ===== preparar: o coach propõe, tu afinas ===== */
 const OPP_TAGS = ['Não o conheço', 'Defensivo', 'Agressivo', 'Muito consistente', 'Bom serviço', 'Serviço fraco', 'Esquerda fraca', 'Direita forte', 'Canhoto', 'Sobe à rede', 'Joga alto', 'Rápido'];
-const pre = () => `${bar()}<h1>Tenho jogo</h1><p class="lede">${hasAI() ? 'Diz-me só o essencial. O coach prepara o plano tático e mental, e depois afinas com ele.' : 'Prepara o teu plano para o jogo.'}</p>
+const pre = () => `${bar()}<h1>Tenho jogo</h1><p class="lede">Diz-me só o essencial. O coach prepara o plano tático e mental, e depois afinas com ele.</p>
   <form onsubmit="submitPre(event)">
   <label class="f" for="pOpp" style="margin-top:0">Adversário</label><input type="text" id="pOpp" name="opp" placeholder="Nome (opcional)">${tournamentSelect()}
   <label class="f">Superfície</label>${seg('surface', ['Terra', 'Rápido', 'Indoor'], S.profile.surface === 'Rápido' ? 'Rápido' : S.profile.surface === 'Indoor' ? 'Indoor' : 'Terra')}
   <label class="f">O que sabes dele? (toca no que se aplica)</label>${chipset('oppTags', OPP_TAGS, [])}
   <div class="group mt">${slider('nerves', 'Nervos agora', 5, '1 nada, 10 muito')}</div>
-  <details class="more" ${hasAI() ? '' : 'open'}><summary>${hasAI() ? 'Mais detalhes (opcional)' : 'O teu plano'}</summary><div class="inner">
+  <details class="more"><summary>Mais detalhes (opcional)</summary><div class="inner">
     <label class="f" for="pStyle" style="margin-top:0">Como joga o adversário?</label><textarea id="pStyle" name="oppStyle" placeholder="Ex.: esquerda a uma mão fraca em bolas altas"></textarea>
-    ${hasAI() ? '' : `<label class="f" for="pA">Plano A</label><textarea id="pA" name="planA" placeholder="Ex.: servir aberto no deuce, entrar com a direita inside-in"></textarea>
-    <label class="f" for="pB">Plano B</label><textarea id="pB" name="planB" placeholder="Ex.: mais altura e peso, subir à rede"></textarea>`}
-    <label class="f" for="pT">O que te pode tirar do jogo?</label><textarea id="pT" name="threats" placeholder="Ex.: frustrar-me se ele devolver tudo"></textarea>
+        <label class="f" for="pT">O que te pode tirar do jogo?</label><textarea id="pT" name="threats" placeholder="Ex.: frustrar-me se ele devolver tudo"></textarea>
   </div></details>
-  <button class="btn mt" id="preBtn">${hasAI() ? `${ic('spark')}O coach prepara o plano` : 'Guardar plano'}</button>
-  <p class="hint" style="text-align:center">${hasAI() ? 'Plano A e B, padrões de jogo, palavras-chave, reset, nervos e visualização de 60 s.' : 'Com o coach ativo nas Definições, é ele que prepara o plano.'}</p></form>`;
+  <button class="btn mt" id="preBtn">${ic('spark')}O coach prepara o plano</button>
+  <p class=\"hint\" style=\"text-align:center\">${'Plano A e B, padrões de jogo, palavras-chave, reset, nervos e visualização de 60 s.'}</p></form>`;
 const PRE_TASK = e => `O jogador vai jogar e quer que sejas tu a preparar o plano. Dados: ${entryLine(e)}.
 Cria o cartão de jogo completo, tático e mental, adaptado ao estilo e à pancada mais forte do jogador, ao adversário e à superfície. Se não souberes nada do adversário, propõe como descobrir o jogo dele nos primeiros jogos. Chaves: "plano" (resumo em 1-2 frases), "plano_a" (tática principal, 1-2 frases concretas: serviço, direção, padrões), "plano_b" (alternativa se o A não resultar, 1-2 frases), "padroes" (array de 2-3 padrões de jogo curtos, ex.: "Serviço aberto e direita para o espaço"), "chaves" (array de exatamente 3 palavras-chave de 1-2 palavras), "primeiros_jogos" (1 frase), "se_correr_mal" (sinais para mudar para o plano B, 1-2 frases), "reset" (reset após erro em 3 passos numa frase), "ativacao" (dica para os nervos ajustada ao nível indicado), "visualizacao" (guião de 60 s, 2.ª pessoa, 4-5 frases), "estudo" (id de um estudo relevante da biblioteca, ou ""), "sugestoes" (array de 3 respostas curtas que o jogador pode tocar para afinar o plano, na voz dele, ex.: "Ele é canhoto").`;
 async function submitPre(ev) {
   ev.preventDefault(); const d = formData(ev.target);
   const e = { id: uid(), type: 'pre', ts: Date.now(), ...d, oppTags: chipVals('oppTags'), nerves: +d.nerves }; saveEntry(e); plan();
-  if (!hasAI()) { toast('Plano guardado'); return replace('entry', e.id); }
-  await aiBtn('#preBtn', 'O coach está a preparar o plano…', async () => { e.ai = await askJSON(PRE_TASK(e)); e.thread = []; saveEntry(e); });
+  await aiBtn('#preBtn', 'O coach está a preparar o plano…', async () => { e.ai = await coachJSON(PRE_TASK(e), () => rules.preCard(e)); e.thread = []; saveEntry(e); });
   replace('entry', e.id);
 }
 
@@ -66,7 +64,7 @@ function post() {
   <label class="f" for="oGood" style="margin-top:0">O que correu bem?</label><textarea id="oGood" name="good"></textarea>
   <label class="f" for="oBad">O que correu mal?</label><textarea id="oBad" name="bad"></textarea>
   <label class="f" for="oKey">Momento em que o jogo mudou</label><textarea id="oKey" name="key" placeholder="Ex.: 4-4 no 2.º set, perdi o serviço com duas duplas"></textarea></div></details>
-  <button class="btn mt" id="postBtn">${hasAI() ? 'Guardar e pedir análise' : 'Guardar jogo'}</button></form>`;
+  <button class="btn mt" id="postBtn">Guardar e pedir análise</button></form>`;
 }
 const POST_TASK = (e, pre) => `O jogador registou este jogo: ${entryLine(e)}${pre ? `\nPlano antes do jogo: ${entryLine(pre)}. Cumprimento do plano A: ${e.planDone}/10.` : ''}
 Compara com o histórico e a memória. Toma a iniciativa: diz o que achas que aconteceu, mesmo com poucos dados, e o que fazer a seguir. Chaves: "resumo" (2-3 frases sobre o que aconteceu mental e taticamente), "padrao" (um padrão que se repete no histórico, ou "Ainda poucos dados" se não houver), "ponto_forte" (1 frase), "a_trabalhar" (a competência mental mais importante a melhorar e porquê, 1-2 frases), "exercicio" (exercício concreto para o próximo treino, com duração), "foco_proximo" (foco para a próxima semana, máx. 8 palavras), "memoria" (array de 0-2 notas novas e duradouras sobre este jogador para a tua memória, só se forem mesmo novas), "estudo" (id de um estudo relevante da biblioteca, ou ""), "sugestoes" (array de 3 respostas curtas para o jogador aprofundar a análise contigo, na voz dele, ex.: "No 2.º set fiquei tenso").`;
@@ -74,10 +72,9 @@ async function submitPost(ev) {
   ev.preventDefault(); const d = formData(ev.target);
   const e = { id: uid(), type: 'post', ts: Date.now(), tags: chipVals('postTags'), thread: [], opp: d.opp, result: d.result, score: d.score, fs: d.fs, df: d.df, bpw: d.bpw, bpt: d.bpt, good: d.good, bad: d.bad, key: d.key, emotion: chipVals('emotion').join(', '), tournament: d.tournament || '', round: d.round || '', planDone: d.planDone || '', preId: d.preId || '', skills: {} };
   PK.forEach(k => e.skills[k] = +d[k]); saveEntry(e);
-  if (!hasAI()) { toast('Jogo guardado'); return replace('entry', e.id); }
   await aiBtn('#postBtn', 'O coach está a analisar…', async () => {
     const p = e.preId ? S.entries.find(x => x.id === e.preId) : null;
-    e.ai = await askJSON(POST_TASK(e, p)); addMemory(e.ai.memoria); saveEntry(e);
+    e.ai = await coachJSON(POST_TASK(e, p), () => rules.postAnalysis(e)); addMemory(e.ai.memoria); saveEntry(e);
   });
   replace('entry', e.id);
 }
@@ -99,9 +96,8 @@ async function submitPractice(ev) {
   const e = { id: uid(), type: 'practice', ts: Date.now(), what: d.what, quality: +d.quality, intentDone: +d.intentDone, learned: d.learned };
   if (opened) { e.skills = {}; PK.forEach(k => e.skills[k] = +d[k]); }
   saveEntry(e);
-  if (!hasAI()) { toast('Reflexão guardada'); return replace('entry', e.id); }
   await aiBtn('#prBtn', 'O coach está a ler…', async () => {
-    e.ai = await askJSON(`Reflexão de treino: ${entryLine(e)}. Dá feedback curto e propõe o próximo passo. Chaves: "resumo" (1-2 frases), "a_trabalhar" (1 frase), "exercicio" (para o próximo treino, 1 frase), "foco_proximo" (máx. 8 palavras), "sugestoes" (array de 3 respostas curtas que o jogador pode tocar, na voz dele).`, 'quick');
+    e.ai = await coachJSON(`Reflexão de treino: ${entryLine(e)}. Dá feedback curto e propõe o próximo passo. Chaves: "resumo" (1-2 frases), "a_trabalhar" (1 frase), "exercicio" (para o próximo treino, 1 frase), "foco_proximo" (máx. 8 palavras), "sugestoes" (array de 3 respostas curtas que o jogador pode tocar, na voz dele).`, () => rules.practiceFeedback(e), 'quick');
     saveEntry(e);
   });
   replace('entry', e.id);
@@ -118,11 +114,11 @@ function entry() {
   const raw = S.entries.find(x => x.id === S.param); if (!raw) return null;
   const e = { ...raw, oppTagsTxt: (raw.oppTags || []).join(', '), tagsTxt: (raw.tags || []).join(', ') };
   const tn = e.tournament ? S.state.tournaments.find(t => t.id === e.tournament) : null;
-  const retry = !e.ai && e.type !== 'checkin' ? (hasAI() ? `<div class="panel mt"><p class="muted" style="margin-top:0">Ainda sem análise do coach.</p><button class="btn small" id="retry" onclick="retryAI('${e.id}')">${ic('spark')}Pedir análise</button></div>` : `<div class="mt">${aiOff('a análise')}</div>`) : '';
+  const retry = !e.ai && e.type !== 'checkin' ? `<div class="panel mt"><p class="muted" style="margin-top:0">Ainda sem análise do coach.</p><button class="btn small" id="retry" onclick="retryAI('${e.id}')">${ic('spark')}Pedir análise</button></div>` : '';
   const meta = [tn?.name, e.round].filter(Boolean).map(esc).join(', ');
   let body = '';
   if (e.type === 'checkin') body = `<h1>Check-in</h1>${group([...CHECK.map(([k, l]) => item({ title: l, val: e[k] })), ...(e.sleep ? [item({ title: 'Sono', val: esc(e.sleep) + ' h' })] : []), ...(e.plan ? [item({ title: 'Dia de', val: esc(e.plan) })] : [])], 'mt')}${e.intent ? `<div class="panel mt"><p class="faint" style="margin:0 0 4px">Intenção</p><h3>${esc(e.intent)}</h3></div>` : ''}`;
-  if (e.type === 'pre') body = `<h1>Jogo vs ${esc(e.opp || '?')}</h1><p class="muted">${[esc(e.surface || ''), `nervos ${e.nerves} em 10`, meta].filter(Boolean).join(', ')}</p>
+  if (e.type === 'pre') body = `<h1>${e.opp ? `Jogo vs ${esc(e.opp)}` : 'Próximo jogo'}</h1><p class="muted">${[esc(e.surface || ''), `nervos ${e.nerves} em 10`, meta].filter(Boolean).join(', ')}</p>
     ${e.ai ? `<div class="panel ink"><p class="muted" style="margin:0 0 6px">Cartão de jogo do coach</p><h2 style="margin-bottom:12px">${esc(e.ai.plano || '')}</h2><div class="cues">${(e.ai.chaves || []).map(c => `<span class="cue">${esc(c)}</span>`).join('')}</div></div>
       <div class="panel mt">${aiSections(e.ai, [['plano_a', 'Plano A'], ['plano_b', 'Plano B'], ['padroes', 'Padrões de jogo'], ['primeiros_jogos', 'Primeiros 3 jogos'], ['reset', 'Reset após erro'], ['se_correr_mal', 'Quando mudar para o plano B'], ['ativacao', 'Nervos']])}</div>
       ${adjustBlock('entry', e.id, { defaults: ['Ele é canhoto', 'Já perdi com ele', 'Estou cansado', 'Está muito vento'] })}
@@ -130,7 +126,7 @@ function entry() {
     ${e.ai?.estudo ? studyLink(e.ai.estudo) : ''}
     <details class="more"><summary>O que registaste</summary><div class="inner">${[['oppTagsTxt', 'Sabes do adversário'], ['oppStyle', 'Adversário'], ['planA', 'Plano A'], ['planB', 'Plano B'], ['threats', 'Riscos']].map(([k, l]) => e[k] ? `<p><b>${l}.</b> ${esc(e[k])}</p>` : '').join('') || '<p class="faint">Sem notas.</p>'}</div></details>
     <button class="btn secondary mt" onclick="go('post')">Rever este jogo depois de jogar</button>`;
-  if (e.type === 'post') body = `<h1>vs ${esc(e.opp || '?')}</h1><p class="row" style="flex-wrap:wrap">${resultPill(e.result)} <b>${esc(e.score || '')}</b> <span class="muted">${meta}</span></p>
+  if (e.type === 'post') body = `<h1>${e.opp ? `vs ${esc(e.opp)}` : e.result === 'vitória' ? 'Vitória' : 'Derrota'}</h1><p class="row" style="flex-wrap:wrap">${resultPill(e.result)} <b>${esc(e.score || '')}</b> <span class="muted">${meta}</span></p>
     ${e.ai ? `<div class="panel ink"><p class="muted" style="margin:0 0 6px">Análise do coach</p><p class="ai-text" style="margin:0 0 4px">${esc(e.ai.resumo || '')}</p>${aiSections(e.ai, [['padrao', 'Padrão'], ['ponto_forte', 'Ponto forte'], ['a_trabalhar', 'A trabalhar'], ['exercicio', 'Exercício'], ['foco_proximo', 'Foco da próxima semana']])}</div>
       ${adjustBlock('entry', e.id, { title: 'Falar sobre o jogo', defaults: ['Os nervos foram o problema', 'Ele mudou de tática', 'Fisicamente não estava bem'] })}${e.ai.estudo ? studyLink(e.ai.estudo) : ''}` : retry}
     ${(e.fs || e.df || e.bpt) ? `<div class="nums mt"><div><b class="display">${e.fs ? esc(e.fs) + '%' : '–'}</b><span>1.º serviço</span></div><div><b class="display">${esc(e.df || '–')}</b><span>duplas faltas</span></div><div><b class="display">${esc(e.bpw || '–')}/${esc(e.bpt || '–')}</b><span>break points</span></div></div>` : ''}
@@ -148,9 +144,9 @@ function delEntry(id) { confirmBox('Apagar este registo?', () => { deleteEntry(i
 async function retryAI(id) {
   const e = S.entries.find(x => x.id === id);
   await aiBtn('#retry', 'A pensar…', async () => {
-    if (e.type === 'pre') e.ai = await askJSON(PRE_TASK(e));
-    else if (e.type === 'post') { e.ai = await askJSON(POST_TASK(e, e.preId ? S.entries.find(x => x.id === e.preId) : null)); addMemory(e.ai.memoria); }
-    else e.ai = await askJSON(`Reflexão de treino: ${entryLine(e)}. Chaves: "resumo", "a_trabalhar", "exercicio", "foco_proximo" (máx. 8 palavras).`, 'quick');
+    if (e.type === 'pre') e.ai = await coachJSON(PRE_TASK(e), () => rules.preCard(e));
+    else if (e.type === 'post') { e.ai = await coachJSON(POST_TASK(e, e.preId ? S.entries.find(x => x.id === e.preId) : null), () => rules.postAnalysis(e)); addMemory(e.ai.memoria); }
+    else e.ai = await coachJSON(`Reflexão de treino: ${entryLine(e)}. Chaves: "resumo", "a_trabalhar", "exercicio", "foco_proximo" (máx. 8 palavras).`, () => rules.practiceFeedback(e), 'quick');
     saveEntry(e); render();
   });
 }

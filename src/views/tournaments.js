@@ -1,6 +1,7 @@
 /* Torneios: contagem decrescente, plano IA com checklist por fase, jogos ligados */
 import { S, uid, daysUntil, isoDate, TODAY, saveState, plan, go, back, replace, render } from '../core.js';
-import { askJSON, hasAI, aiBtn, aiOff } from '../ai.js';
+import { coachJSON, aiBtn } from '../ai.js';
+import * as rules from '../rules.js';
 import { esc, ic, item, group, secTitle, seg, formData, bar, checkRow, confirmBox } from '../ui.js';
 import { adjustBlock } from './adjust.js';
 
@@ -52,8 +53,8 @@ function tournament() {
   ${t.goal ? `<div class="panel ink mt"><p class="muted" style="margin:0 0 4px">Objetivo</p><h3>${esc(t.goal)}</h3></div>` : ''}
   ${p ? `${p.foco_mental ? `${secTitle('Foco mental para o torneio')}<div class="panel"><p class="display takeaway" style="margin:0">${esc(p.foco_mental)}</p></div>` : ''}${PHASES.map(([k, l]) => sect(k, l)).join('')}
     ${adjustBlock('tournament', t.id, { title: 'Afinar o plano com o coach', defaults: ['Viajo na véspera', 'Jogo duas vezes por dia', 'Estou com pouco ritmo'] })}
-    ${hasAI() ? `<button class="btn text" id="tpBtn" onclick="tPlan('${t.id}')">Refazer o plano do zero</button>` : ''}`
-    : hasAI() ? `<div class="panel mt"><p class="muted" style="margin-top:0">O coach cria um plano de preparação: semana antes, véspera, dia de jogo, entre jogos e o que fazer se perderes.</p><button class="btn" id="tpBtn" onclick="tPlan('${t.id}')">${ic('spark')}Criar plano do torneio</button></div>` : `<div class="mt">${aiOff('o plano do torneio')}</div>`}
+    <button class="btn text" id="tpBtn" onclick="tPlan('${t.id}')">Refazer o plano do zero</button>`
+    : `<div class="panel mt"><p class="muted" style="margin-top:0">O coach cria um plano de preparação: semana antes, véspera, dia de jogo, entre jogos e o que fazer se perderes.</p><button class="btn" id="tpBtn" onclick="tPlan('${t.id}')">${ic('spark')}Criar plano do torneio</button></div>`}
   ${secTitle('Jogos')}
   ${group([...ms.map(e => item({ lead: e.type === 'pre' ? 'flag' : 'pen', title: `${e.type === 'pre' ? 'Pré-jogo' : 'Jogo'} vs ${esc(e.opp || '?')}`, sub: esc(e.round || ''), val: e.result ? `<span class="pill ${e.result === 'vitória' ? 'win' : 'loss'}">${e.result === 'vitória' ? 'V' : 'D'}</span>` : '', onclick: `go('entry','${e.id}')` })),
     item({ lead: 'flag', title: 'Preparar jogo', onclick: "go('pre')" }), item({ lead: 'pen', title: 'Rever jogo', onclick: "go('post')" })])}
@@ -65,7 +66,7 @@ function tDelete(id) { confirmBox('Apagar este torneio?', () => { S.state.tourna
 async function tPlan(id) {
   const t = S.state.tournaments.find(x => x.id === id);
   await aiBtn('#tpBtn', 'O coach está a planear…', async () => {
-    t.plan = await askJSON(`Cria um plano de preparação mental e prática para o torneio "${t.name}" (${t.start} a ${t.end}, ${t.surface}, ${t.place || ''}). Objetivo: ${t.goal || '-'}. Notas: ${t.notes || '-'}. Adapta às competências mais fracas do jogador. Chaves (arrays de 3-5 itens curtos e acionáveis, até 16 palavras cada): "antes" (semana antes), "vespera", "dia_de_jogo" (inclui aquecimento e rotina pré-jogo com timings), "entre_jogos" (recuperação física e mental entre rondas), "depois_derrota" (como processar uma derrota no torneio); e "foco_mental" (string, máx. 10 palavras); e "sugestoes" (array de 3 respostas curtas que o jogador pode tocar para ajustar o plano, na voz dele).`);
+    t.plan = await coachJSON(`Cria um plano de preparação mental e prática para o torneio "${t.name}" (${t.start} a ${t.end}, ${t.surface}, ${t.place || ''}). Objetivo: ${t.goal || '-'}. Notas: ${t.notes || '-'}. Adapta às competências mais fracas do jogador. Chaves (arrays de 3-5 itens curtos e acionáveis, até 16 palavras cada): "antes" (semana antes), "vespera", "dia_de_jogo" (inclui aquecimento e rotina pré-jogo com timings), "entre_jogos" (recuperação física e mental entre rondas), "depois_derrota" (como processar uma derrota no torneio); e "foco_mental" (string, máx. 10 palavras); e "sugestoes" (array de 3 respostas curtas que o jogador pode tocar para ajustar o plano, na voz dele).`, () => rules.tournamentPlan(t));
     t.checks = {}; t.thread = []; saveState(); render();
   });
 }

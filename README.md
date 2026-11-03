@@ -8,7 +8,7 @@ PWA sem build, pensada para instalar no iPhone a partir do GitHub Pages.
 
 1. Abre `https://andremp33.github.io/ponto-a-ponto/` no Safari.
 2. Toca em Partilhar → **Adicionar ao ecrã principal**.
-3. Abre a app a partir do ícone. Nas Definições, cola a tua chave da API Anthropic para ativar o coach.
+3. Abre a app a partir do ícone. O coach funciona logo, grátis e offline. Para conversa livre, em Definições → Coach escolhe **IA no telemóvel** e descarrega o modelo (cerca de 1 GB, uma vez, por Wi-Fi; precisa do iOS 26 ou mais recente).
 
 Os dados ficam só no telemóvel. Usa Definições → Exportar para fazer cópias de segurança.
 

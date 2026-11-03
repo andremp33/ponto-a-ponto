@@ -41,6 +41,16 @@ src/
     science.js (separador Ciência e página de cada estudo)
 ```
 
+### Coach grátis (v3.2)
+
+O jogador não quer gastar dinheiro. O fornecedor do coach escolhe-se nas Definições (`aiSettings().provider`):
+- `rules` (por omissão): `src/rules.js`, coach de regras offline com as mesmas estruturas JSON (plano do dia, cartão de jogo, análise, torneio, passos, revisão) e ajustes por palavras-chave. Sem conversa livre.
+- `local`: `src/local-llm.js`, WebLLM 0.2.86 fixo (jsdelivr, carregado só se escolhido) com Qwen2.5 1.5B ou Llama 3.2 1B (q4f16, ou q4f32 se não houver `shader-f16`). Janela de 4096 tokens: usa `compactSystem()`, nunca o contexto completo. Deteta se o iOS fechou a app ao carregar (`pap_llm_loading`).
+- `ollama`: API nativa `/api/chat` do Ollama do PC do jogador (precisa de HTTPS e `OLLAMA_ORIGINS`).
+- `anthropic`: opcional e pago.
+- `coachJSON(task, rulesFn)`: usa o modelo se houver; senão (ou se o modelo grátis falhar) usa as regras. Os testes verificam que o modo grátis não faz pedidos pagos.
+- O service worker só apaga caches `pap-*` (os pesos do modelo ficam em `webllm/*`) e guarda o motor WebLLM em `pap-lib` para funcionar offline.
+
 ### Coach proativo (v3.1)
 
 - O coach toma a iniciativa: plano do dia gerado sozinho no Hoje, cartão de jogo a partir de toques (adversário, superfície, chips), análise pós-jogo com conversa, abertura do chat pelo coach.

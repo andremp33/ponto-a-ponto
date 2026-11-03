@@ -1,7 +1,8 @@
 /* Hoje: court com placar do loop diário, check-in e desafio no court */
 import { S, PK, PN, CHECK, plan, loopStatus, daysSinceBackup, getMeta, setMeta, pillarScores, streak, overallScore, winLoss, upcomingTournament, currentFocus, daysUntil, TODAY, trainingInfo, saveState, saveEntry, markDone, isMatchDay, uid, longDate, go, back, render } from '../core.js';
 import { LESSONS } from '../content.js';
-import { askJSON, hasAI, aiErr } from '../ai.js';
+import { coachJSON, aiErr } from '../ai.js';
+import * as rules from '../rules.js';
 import { adjustBlock } from './adjust.js';
 import { studyRow } from './science.js';
 import { $, esc, ic, f1, item, group, secTitle, slider, seg, formData, bar, toast, spin } from '../ui.js';
@@ -24,10 +25,10 @@ const BRIEF_TASK = d => `Prepara o plano do coach para hoje. Toma a iniciativa: 
 Chaves: "titulo" (até 8 palavras), "texto" (2-3 frases: o que propões hoje e porquê, ligado aos dados), "acao" (uma ação concreta para hoje, 1 frase), "pilar" (a competência a treinar hoje, uma destas chaves: ${PK.join(', ')}), "dia_de_jogo" (true ou false), "estudo" (id de um estudo da biblioteca relevante, ou ""), "sugestoes" (array de 3 respostas curtas que o jogador pode tocar para ajustar, na voz dele, ex.: "Hoje tenho jogo", "Estou cansado", "Só tenho 10 minutos").`;
 let briefLoading = false, briefFailed = false;
 async function loadBrief() {
-  if (briefLoading || briefFailed || !hasAI() || S.state.briefs[TODAY()]) return;
+  if (briefLoading || briefFailed || S.state.briefs[TODAY()]) return;
   briefLoading = true;
   try {
-    const d = plan(), r = await askJSON(BRIEF_TASK(d), 'quick');
+    const d = plan(), r = await coachJSON(BRIEF_TASK(d), () => rules.brief(d), 'quick');
     S.state.briefs[TODAY()] = { ...r, ts: Date.now(), thread: [] }; saveState();
   } catch (e) { console.warn(e); briefFailed = aiErr(e); }
   briefLoading = false;
@@ -35,7 +36,6 @@ async function loadBrief() {
 }
 function retryBrief() { briefFailed = false; render(); }
 function briefCard() {
-  if (!hasAI()) return group([item({ lead: 'key', title: 'Ativar o coach', sub: 'Com a tua chave da API, o coach prepara o teu dia, os jogos e os torneios por ti.', onclick: "go('settings')" })]);
   const b = S.state.briefs[TODAY()];
   if (!b) return briefFailed
     ? group([item({ lead: 'spark', title: 'O coach não conseguiu preparar o dia', sub: esc(briefFailed), onclick: 'retryBrief()' })])

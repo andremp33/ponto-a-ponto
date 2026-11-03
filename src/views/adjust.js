@@ -1,7 +1,8 @@
 /* Conversa curta para afinar uma proposta do coach (cartão de jogo, análise, plano do torneio, plano do dia).
    O coach propõe primeiro; o jogador toca numa sugestão ou escreve, e o coach devolve a proposta ajustada. */
-import { S, TODAY, saveEntry, saveState, setDayPillar, setMatchToday, isMatchDay, render } from '../core.js';
-import { adjustJSON, hasAI, aiErr, addMemory } from '../ai.js';
+import { S, TODAY, plan, saveEntry, saveState, setDayPillar, setMatchToday, isMatchDay, render } from '../core.js';
+import * as rules from '../rules.js';
+import { adjustJSON, hasAI, aiErr, addMemory, aiSettings } from '../ai.js';
 import { $, esc, J, ic, spin, toast } from '../ui.js';
 
 const entryOf = id => S.entries.find(e => e.id === id);
@@ -41,7 +42,6 @@ const thread = (kind, id) => { const o = TARGETS[kind].obj(id); return (o.thread
 
 /** Bloco de conversa. opts: title, defaults (sugestões fixas), compact (só a última resposta). */
 export function adjustBlock(kind, id, { title = 'Afinar com o coach', defaults = [], compact = false, onInk = false } = {}) {
-  if (!hasAI()) return '';
   const cur = TARGETS[kind].get(id); if (!cur) return '';
   const th = thread(kind, id), shown = compact ? th.slice(-2) : th;
   const used = new Set(th.filter(m => m.r === 'u').map(m => m.t.toLowerCase()));
@@ -55,13 +55,21 @@ export function adjustBlock(kind, id, { title = 'Afinar com o coach', defaults =
   </section>`;
 }
 
+/* Ajuste sem modelo de IA: regras por tipo de proposta. */
+function offline(kind, id, cur, text) {
+  if (kind === 'brief') return rules.adjustBrief(cur, text, plan());
+  const e = kind === 'entry' ? entryOf(id) : null;
+  if (e?.type === 'pre') return rules.adjustPre(cur, text, e);
+  if (e?.type === 'post') return rules.adjustPost(cur, text, e);
+  return { ...cur, resposta: 'Anotei. Para ajustar isto com conversa livre, liga a IA no telemóvel nas Definições (é grátis).' };
+}
+
 let busy = false;
 async function adjustSend(kind, id, text) {
   if (busy) return;
   const box = document.querySelector(`[data-adj="${CSS.escape(`${kind}:${id}`)}"]`);
   const inp = box?.querySelector('.adj-in');
   text = (text || inp?.value || '').trim(); if (!text) return;
-  if (!hasAI()) return toast(aiErr({ code: 'no_key' }), 4000);
   const T = TARGETS[kind], cur = T.get(id); if (!cur) return;
   busy = true;
   const th = thread(kind, id), before = th.slice();
@@ -71,7 +79,12 @@ async function adjustSend(kind, id, text) {
   if (box && !chat) { chat = document.createElement('div'); chat.className = 'chat'; box.querySelector('.adj-sugg').before(chat); }
   chat?.insertAdjacentHTML('beforeend', `<div class="msg u">${esc(text)}</div><div class="msg a">${spin('A ajustar…')}</div>`);
   try {
-    const r = await adjustJSON(T.what(id), cur, before, text, T.tier || 'default');
+    let r;
+    if (!hasAI()) r = offline(kind, id, cur, text);
+    else {
+      try { r = await adjustJSON(T.what(id), cur, before, text, T.tier || 'default'); }
+      catch (e) { if (aiSettings().provider === 'anthropic') throw e; console.warn(e); toast(`${aiErr(e)} Usei o coach offline.`, 4500); r = offline(kind, id, cur, text); }
+    }
     th.push({ r: 'u', t: text, ts: Date.now() }, { r: 'c', t: String(r.resposta || 'Ajustei a proposta.'), ts: Date.now() });
     if (th.length > 24) th.splice(0, th.length - 24);
     T.set(id, r); T.after?.(id, r); T.save(id);

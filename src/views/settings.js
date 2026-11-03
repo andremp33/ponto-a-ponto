@@ -1,34 +1,114 @@
 /* Definições: perfil, foco, voz, lembrete, coach de IA e dados */
 import { S, clone, uid, render, go, saveProfile, exportJSON, parseBackup, importBackup, resetData, hasUndo, restoreUndo, getMeta, setMeta, storageInfo, requestPersist, daysSinceBackup, shortDate, TODAY } from '../core.js';
-import { aiSettings, saveAiSettings, testConnection, aiErr, profileText, DEFAULT_MODELS } from '../ai.js';
-import { $, esc, ic, bar, seg, secTitle, toast, confirmBox, downloadFile, spin } from '../ui.js';
+import { aiSettings, saveAiSettings, testConnection, aiErr, profileText, DEFAULT_MODELS, PROVIDERS } from '../ai.js';
+import { LOCAL_MODELS, webgpuInfo, getEngine, localComplete, removeModel, crashedLastTime, clearCrashFlag } from '../local-llm.js';
+import { $, esc, ic, bar, seg, group, secTitle, toast, confirmBox, downloadFile, spin } from '../ui.js';
 
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.2.0';
 
 function aiSection() {
-  const s = aiSettings();
-  return `${secTitle('Coach de IA')}
-  <div class="panel">
-    <p class="muted" style="margin-top:0">O coach usa a API da Anthropic com a tua própria chave. A chave fica guardada só neste telemóvel e só sai daqui para ser enviada diretamente à Anthropic.</p>
+  const s = aiSettings(), pv = s.provider;
+  const choose = group(PROVIDERS.map(([k, n, d]) => `<button type="button" class="item ${pv === k ? 'done' : ''}" role="radio" aria-checked="${pv === k}" onclick="setProvider('${k}')"><span class="lead">${pv === k ? ic('check') : ''}</span><span class="tx"><b>${n}</b><small>${d}</small></span></button>`));
+  let body = '';
+  if (pv === 'rules') body = `<p class="muted" style="margin:0">O coach offline prepara o dia, o cartão de jogo, a análise e o plano do torneio a partir dos teus dados, das lições e dos estudos da biblioteca, e ajusta-se quando tocas nas respostas. Não tem conversa livre: para isso, liga a IA no telemóvel.</p>`;
+  if (pv === 'local') body = `<div id="gpuInfo" class="hint" style="margin:0 0 10px">A verificar se este telemóvel aguenta…</div>
+    ${crashedLastTime() ? `<p class="msg err" style="max-width:none">Da última vez, a IA não terminou de carregar (o iPhone pode ter fechado a app por falta de memória). Experimenta o modelo mais leve.</p>` : ''}
+    <label class="f" style="margin-top:0">Modelo</label>
+    ${group(LOCAL_MODELS.map(m => `<button type="button" class="item ${s.localModel === m.id ? 'done' : ''}" role="radio" aria-checked="${s.localModel === m.id}" onclick="setLocalModel('${m.id}')"><span class="lead">${s.localModel === m.id ? ic('check') : ''}</span><span class="tx"><b>${m.n}</b><small>${m.size}. ${m.note}</small></span></button>`), 'flat')}
+    <div id="dlWrap" class="mt" hidden><div class="progress"><i id="dlBar" style="width:0%"></i></div><p class="hint" id="dlTxt" aria-live="polite">A começar…</p></div>
+    ${s.localReady
+      ? `<p class="hint mt" style="margin-bottom:0">${ic('check')} Modelo guardado neste telemóvel. Funciona sem internet.</p><div class="grid2 mt"><button class="btn secondary" id="locTest" onclick="localTest()">Testar</button><button class="btn secondary" onclick="localRemove()">Apagar modelo</button></div><div id="locOut" aria-live="polite"></div>`
+      : `<button class="btn mt" id="dlBtn" onclick="localDownload()">${ic('download')}Descarregar e ativar</button><p class="hint" style="margin-bottom:0">Usa Wi-Fi: é um download grande, feito uma só vez. As respostas são mais simples do que as do Claude e as primeiras podem demorar alguns segundos.</p>`}`;
+  if (pv === 'ollama') body = `<p class="muted" style="margin-top:0">Usa um modelo do Ollama que corre no teu computador. O PC tem de estar ligado e o endereço tem de ser <b>https://</b> (o Safari bloqueia http a partir desta app).</p>
+    <label class="f" for="olUrl">Endereço do Ollama</label><input type="text" id="olUrl" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://o-meu-pc.ts.net" value="${esc(s.ollamaUrl)}">
+    <label class="f" for="olModel">Modelo</label><input type="text" id="olModel" autocapitalize="off" spellcheck="false" placeholder="ex.: llama3.2, qwen2.5:7b" value="${esc(s.ollamaModel)}">
+    <div class="grid2 mt"><button class="btn secondary" id="olTest" onclick="ollamaTest()">Testar ligação</button><button class="btn" onclick="ollamaSave()">Guardar</button></div><div id="olOut" aria-live="polite"></div>
+    <details class="more" style="background:var(--chalk)"><summary>Como preparar o PC</summary><div class="inner"><ol class="install-steps" style="color:var(--ink)">
+      <li>No PC, define a variável <code>OLLAMA_ORIGINS=https://andremp33.github.io</code> e reinicia o Ollama.</li>
+      <li>Instala o Tailscale (grátis) no PC e no iPhone, e no PC corre <code>tailscale serve --bg 11434</code>.</li>
+      <li>Cola aqui o endereço https que o Tailscale te mostrar.</li></ol></div></details>`;
+  if (pv === 'anthropic') body = `<p class="muted" style="margin-top:0">Usa a API da Anthropic com a tua própria chave (paga, com créditos pré-pagos). A chave fica só neste telemóvel e só é enviada diretamente à Anthropic.</p>
     <label class="f" for="aiKey">Chave da API</label>
     <input type="password" id="aiKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(s.key)}">
     <details class="more" style="background:var(--chalk)"><summary>Modelos</summary><div class="inner">
       <label class="f" for="aiModel" style="margin-top:0">Análises e conversa</label>
       <input type="text" id="aiModel" autocapitalize="off" spellcheck="false" value="${esc(s.model)}" placeholder="${DEFAULT_MODELS.model}">
-      <label class="f" for="aiQuick">Tarefas rápidas (insight, memória, frases)</label>
+      <label class="f" for="aiQuick">Tarefas rápidas (plano do dia, memória, frases)</label>
       <input type="text" id="aiQuick" autocapitalize="off" spellcheck="false" value="${esc(s.quickModel)}" placeholder="${DEFAULT_MODELS.quickModel}">
-      <p class="hint">Por omissão: ${DEFAULT_MODELS.model} e ${DEFAULT_MODELS.quickModel}.</p>
+      <p class="hint">Para gastar o mínimo, põe ${DEFAULT_MODELS.quickModel} nos dois campos.</p>
     </div></details>
     <div class="grid2 mt"><button class="btn secondary" id="aiTest" onclick="aiTestConn()">Testar ligação</button><button class="btn" onclick="aiSave()">Guardar</button></div>
     <div id="aiTestOut" aria-live="polite"></div>
-    <p class="hint mt">Recomendado: define um limite de gastos mensal na <a href="https://console.anthropic.com/settings/limits" target="_blank" rel="noopener">Console da Anthropic</a>.</p>
-    ${s.key ? `<button class="btn danger" onclick="aiForget()">Remover a chave deste telemóvel</button>` : ''}
-  </div>`;
+    <p class="hint mt">Define um limite de gastos mensal na <a href="https://console.anthropic.com/settings/limits" target="_blank" rel="noopener">Console da Anthropic</a>.</p>
+    ${s.key ? `<button class="btn danger" onclick="aiForget()">Remover a chave deste telemóvel</button>` : ''}`;
+  return `${secTitle('Coach')}${choose}<div class="panel mt">${body}</div>`;
+}
+function setProvider(k) {
+  const s = aiSettings();
+  if (k === 'local' && !s.localReady) toast('Descarrega o modelo para o ativar.');
+  saveAiSettings({ provider: k }); render();
+}
+function setLocalModel(id) {
+  const s = aiSettings(); if (s.localModel === id) return;
+  saveAiSettings({ localModel: id, localReady: false }); clearCrashFlag(); render();
+}
+async function localDownload() {
+  const s = aiSettings(), g = await webgpuInfo();
+  if (!g.ok) return toast(g.reason, 5000);
+  await requestPersist();
+  const b = $('#dlBtn'); b.disabled = true; b.innerHTML = spin('A descarregar…'); $('#dlWrap').hidden = false;
+  try {
+    await getEngine(s.localModel, r => {
+      const pct = Math.round((r.progress || 0) * 100);
+      const bar = $('#dlBar'), txt = $('#dlTxt');
+      if (bar) bar.style.width = pct + '%';
+      if (txt) txt.textContent = `${pct}%. ${pct < 100 ? 'Não feches a app.' : 'A preparar…'}`;
+    });
+    saveAiSettings({ localReady: true, provider: 'local' }); clearCrashFlag();
+    toast('IA no telemóvel pronta'); render();
+  } catch (e) {
+    console.warn(e); toast(e.code === 'no_webgpu' || e.code === 'network' ? e.message : aiErr({ code: 'local' }), 5000);
+    if (document.body.contains(b)) { b.disabled = false; b.innerHTML = `${ic('download')}Tentar outra vez`; }
+  }
+}
+async function localTest() {
+  const s = aiSettings(), b = $('#locTest'), out = $('#locOut');
+  b.disabled = true; b.innerHTML = spin('A pensar…'); const t0 = performance.now();
+  try {
+    const txt = await localComplete(s.localModel, { messages: [{ role: 'system', content: 'Responde em português de Portugal, numa frase curta.' }, { role: 'user', content: 'Dá-me uma dica mental para o próximo ponto de ténis.' }], maxTokens: 60 });
+    out.innerHTML = `<div class="msg a mt" style="max-width:none">${esc(txt.trim())}</div><p class="hint">Respondeu em ${((performance.now() - t0) / 1000).toFixed(1).replace('.', ',')} s.</p>`;
+  } catch (e) { console.warn(e); out.innerHTML = `<p class="msg err mt" style="max-width:none">${esc(e.code === 'no_webgpu' ? e.message : aiErr({ code: 'local' }))}</p>`; }
+  b.disabled = false; b.textContent = 'Testar';
+}
+function localRemove() {
+  confirmBox('Apagar o modelo deste telemóvel?', async () => {
+    await removeModel(aiSettings().localModel); saveAiSettings({ localReady: false, provider: 'rules' }); toast('Modelo apagado. Ficou o coach offline.'); render();
+  }, 'Apagar', { detail: 'Liberta o espaço. Podes voltar a descarregá-lo quando quiseres.' });
+}
+async function fillGpu() {
+  const el = $('#gpuInfo'); if (!el) return;
+  const g = await webgpuInfo();
+  el.innerHTML = g.ok ? `${ic('check')} Este telemóvel tem WebGPU${g.f16 ? '' : ' (sem f16: o modelo ocupa um pouco mais)'}.` : `${ic('x')} ${esc(g.reason)} Usa o coach offline.`;
+}
+function readOllama() { return { ollamaUrl: $('#olUrl').value.trim().replace(/\/+$/, ''), ollamaModel: $('#olModel').value.trim() }; }
+function ollamaSave() { const f = readOllama(); saveAiSettings({ ...f, provider: 'ollama' }); toast('Ollama guardado'); render(); }
+async function ollamaTest() {
+  const f = readOllama(), out = $('#olOut'), b = $('#olTest');
+  if (!/^https:\/\//.test(f.ollamaUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(f.ollamaUrl)) { out.innerHTML = '<p class="hint mt">O endereço tem de começar por https://.</p>'; return; }
+  b.disabled = true; b.innerHTML = spin('A testar…');
+  try {
+    const r = await fetch(f.ollamaUrl + '/api/tags');
+    const models = ((await r.json()).models || []).map(m => m.name);
+    const ok = !f.ollamaModel || models.some(m => m === f.ollamaModel || m.startsWith(f.ollamaModel + ':'));
+    out.innerHTML = `<p class="hint mt">${ok ? `${ic('check')} Ligado. ` : `${ic('x')} O modelo "${esc(f.ollamaModel)}" não está instalado. `}Modelos no PC: ${esc(models.join(', ') || 'nenhum')}.</p>`;
+    if (ok && f.ollamaModel) saveAiSettings({ ...f, provider: 'ollama' });
+  } catch (e) { out.innerHTML = `<p class="msg err mt" style="max-width:none">${esc(aiErr({ code: 'ollama' }))}</p>`; }
+  b.disabled = false; b.textContent = 'Testar ligação';
 }
 function readAiForm() {
   return { key: $('#aiKey').value.trim(), model: $('#aiModel').value.trim() || DEFAULT_MODELS.model, quickModel: $('#aiQuick').value.trim() || DEFAULT_MODELS.quickModel };
 }
-function aiSave() { saveAiSettings(readAiForm()); toast('Definições do coach guardadas'); render(); }
+function aiSave() { saveAiSettings({ ...readAiForm(), provider: 'anthropic' }); toast('Definições do coach guardadas'); render(); }
 function aiForget() { confirmBox('Remover a chave da API?', () => { saveAiSettings({ key: '' }); render(); toast('Chave removida'); }, 'Remover'); }
 async function aiTestConn() {
   const f = readAiForm(), out = $('#aiTestOut'), b = $('#aiTest');
@@ -37,7 +117,7 @@ async function aiTestConn() {
   const res = await testConnection(f.key, f);
   b.disabled = false; b.textContent = 'Testar ligação';
   const ok = res.every(r => r.ok);
-  if (ok) saveAiSettings(f);
+  if (ok) saveAiSettings({ ...f, provider: 'anthropic' });
   out.innerHTML = `<div class="group mt">${res.map(r => `<div class="item static ${r.ok ? 'done' : ''}"><span class="lead">${ic(r.ok ? 'check' : 'x')}</span><span class="tx"><b>${esc(r.model)}</b><small>${r.ok ? 'Ligação a funcionar' : esc(aiErr(r)) + (r.detail && r.code !== 'network' ? ' ' + esc(r.detail) : '')}</small></span></div>`).join('')}</div>${ok ? '<p class="hint mt">Tudo certo. A chave ficou guardada.</p>' : ''}`;
 }
 
@@ -111,7 +191,7 @@ function resetAll() {
 }
 
 export const views = {
-  settings_after: fillStorage,
+  settings_after: () => { fillStorage(); fillGpu(); },
   settings: () => `${bar()}<h1>Definições</h1>
   ${secTitle('Os teus dados')}
   <div class="panel"><p class="muted" style="margin-top:0">Os teus dados ficam guardados só neste telemóvel, sem conta nem servidor. Uma cópia no iCloud protege-te se trocares de telemóvel ou apagares a app.</p>
@@ -140,4 +220,4 @@ export const views = {
   <p class="hint" style="text-align:center;margin-top:28px">Ponto a Ponto ${APP_VERSION}</p>`,
 };
 
-export const handlers = { backupNow, undoImport, aiSave, aiForget, aiTestConn, setVoice, saveWeekFocus, saveCues, redoProfile, makeReminder, exportData, importFile, importPaste, resetAll };
+export const handlers = { setProvider, setLocalModel, localDownload, localTest, localRemove, ollamaSave, ollamaTest, backupNow, undoImport, aiSave, aiForget, aiTestConn, setVoice, saveWeekFocus, saveCues, redoProfile, makeReminder, exportData, importFile, importPaste, resetAll };

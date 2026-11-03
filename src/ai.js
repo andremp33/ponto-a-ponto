@@ -1,7 +1,9 @@
-/* Ponto a Ponto — cliente da API Anthropic (chave do próprio utilizador, só neste dispositivo) */
+/* Ponto a Ponto — coach de IA. Fornecedores: regras (grátis, sem IA), modelo no telemóvel (grátis),
+   Ollama no computador do jogador (grátis) e API da Anthropic (paga, chave do próprio jogador). */
 import { S, PK, PN, CHECK, dayKey, TODAY, pillarScores, currentFocus, upcomingTournament, saveProfile } from './core.js';
 import { $, esc, toast, spin, item, group } from './ui.js';
 import { scienceIndex } from './science.js';
+import { DEFAULT_LOCAL, localComplete, LOCAL_MODELS } from './local-llm.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const AI_LS = 'pap_ai';
@@ -11,21 +13,42 @@ export const DEFAULT_MODELS = { model: 'claude-sonnet-5-5', quickModel: 'claude-
 export function aiSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(AI_LS) || '{}') || {}; } catch { s = {}; }
-  return { key: '', ...DEFAULT_MODELS, ...s };
+  return { key: '', ...DEFAULT_MODELS, localModel: DEFAULT_LOCAL, localReady: false, ollamaUrl: '', ollamaModel: '', ...s, provider: s.provider || (s.key ? 'anthropic' : 'rules') };
 }
 export function saveAiSettings(patch) {
   const s = { ...aiSettings(), ...patch };
   try { localStorage.setItem(AI_LS, JSON.stringify(s)); } catch (e) { console.warn(e); }
   return s;
 }
-export const hasAI = () => !!aiSettings().key;
+/** Há um modelo de linguagem ligado (não conta o coach de regras). */
+export function hasAI(s = aiSettings()) {
+  if (s.provider === 'anthropic') return !!s.key;
+  if (s.provider === 'local') return !!s.localReady;
+  if (s.provider === 'ollama') return !!(s.ollamaUrl && s.ollamaModel);
+  return false;
+}
+export const PROVIDERS = [
+  ['rules', 'Coach offline', 'Grátis e instantâneo. Propõe e ajusta com regras e a biblioteca científica. Sem conversa livre.'],
+  ['local', 'IA no telemóvel', 'Grátis. Um modelo pequeno corre no teu iPhone, sem internet depois de descarregado.'],
+  ['ollama', 'Ollama no computador', 'Grátis. Usa o Ollama do teu PC; o PC tem de estar ligado e acessível por HTTPS.'],
+  ['anthropic', 'Claude (pago)', 'O mais inteligente. Precisa de uma chave da API da Anthropic com créditos.'],
+];
+export function providerName(s = aiSettings()) {
+  if (s.provider === 'local') return `IA no telemóvel (${LOCAL_MODELS.find(m => m.id === s.localModel)?.n || 'modelo local'})`;
+  if (s.provider === 'ollama') return `Ollama (${s.ollamaModel || 'sem modelo'})`;
+  if (s.provider === 'anthropic') return 'Claude';
+  return 'Coach offline';
+}
 
 export class AIError extends Error {
   constructor(code, detail = '', status = 0) { super(detail || code); this.code = code; this.status = status; }
 }
 export function aiErr(e) {
   switch (e?.code) {
-    case 'no_key': return 'O coach está desligado. Cola a tua chave da API nas Definições.';
+    case 'no_key': return 'Não há nenhum modelo de IA ligado. Escolhe um nas Definições (há opções grátis).';
+    case 'no_webgpu': return e.message || 'Este telemóvel não consegue correr IA local (falta o WebGPU).';
+    case 'local': return 'A IA no telemóvel falhou. Experimenta o modelo mais leve nas Definições.';
+    case 'ollama': return 'Não consegui falar com o Ollama. Confirma o endereço, o modelo e o OLLAMA_ORIGINS no PC.';
     case 'auth': return 'Chave inválida. Confirma-a nas Definições.';
     case 'rate': return 'Muitos pedidos, tenta daqui a um minuto.';
     case 'network': return 'Sem ligação. Tenta outra vez quando tiveres rede.';
@@ -72,6 +95,53 @@ async function post(payload, key) {
 const modelFor = (tier, s = aiSettings()) => (tier === 'quick' ? s.quickModel : s.model) || DEFAULT_MODELS[tier === 'quick' ? 'quickModel' : 'model'];
 const textOf = msg => (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 
+const PERSONA_SHORT = `És o coach mental e de estratégia de um tenista competitivo. Escreves sempre em português de Portugal, tratas o jogador por "tu", és direto, caloroso e prático. Tomas a iniciativa: propões tu o plano, sem pedir ao jogador para o escrever, e ajustas ao que ele responder. Frases curtas. Não inventes estudos, números nem citações.`;
+/** Contexto curto para modelos pequenos (janela de 4096 tokens). */
+function compactSystem(extra = '') {
+  const sc = pillarScores(), p = S.profile, f = currentFocus(), d = S.state.days[TODAY()];
+  return `${PERSONA_SHORT}
+
+JOGADOR: ${p.name || 'Jogador'}, ${p.level}, ${p.hand}, estilo ${(p.style || []).join(', ') || '-'}, pancada mais forte ${p.strength}, superfície ${p.surface}. Desafios: ${(p.challenges || []).slice(0, 3).join('; ') || '-'}.
+COMPETÊNCIAS (1-10): ${PK.map(k => `${PN[k]} ${sc[k] != null ? sc[k].toFixed(1) : '-'}`).join('; ')}
+${d ? `HOJE: competência ${PN[d.plan.pillar]}${d.plan.matchDay ? ', dia de jogo' : ''}. ` : ''}Foco: ${f ? f.text : '-'}. Palavras-chave: ${(p.cues || []).join(', ')}
+MEMÓRIA: ${(p.coachMemory || []).slice(-5).map(m => m.t).join(' | ') || '-'}
+ÚLTIMOS REGISTOS:
+${S.entries.slice(0, 4).map(entryLine).map(l => l.slice(0, 300)).join('\n') || '-'}${extra ? '\n\n' + extra : ''}`;
+}
+const blocksText = sys => Array.isArray(sys) ? sys.map(b => b.text).join('\n\n') : String(sys || '');
+let lastProgress = 0;
+const showProgress = r => { const pct = Math.round((r.progress || 0) * 100); if (pct !== lastProgress) { lastProgress = pct; toast(`A preparar a IA no telemóvel… ${pct}%`, 4000); } };
+
+/* ===== Ollama (API nativa) ===== */
+async function ollamaChat(s, messages, { json = false, onText } = {}) {
+  const url = s.ollamaUrl.replace(/\/+$/, '') + '/api/chat';
+  let r;
+  try {
+    r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: s.ollamaModel, messages, stream: !!onText, ...(json ? { format: 'json' } : {}), options: { num_ctx: 8192 } }) });
+  } catch (e) { throw new AIError('ollama', e.message); }
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch {} throw new AIError(r.status === 404 ? 'model' : 'ollama', m, r.status); }
+  if (!onText) return (await r.json()).message?.content || '';
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '', acc = '';
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }); let i;
+    while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue; try { acc += JSON.parse(line).message?.content || ''; onText(acc); } catch {} }
+  }
+  return acc;
+}
+
+/** Pedido genérico a qualquer fornecedor. system: blocos (Anthropic) ou texto. */
+async function ask({ system, messages, tier = 'default', json = false, onText, extra = '' }) {
+  const s = aiSettings();
+  if (!hasAI(s)) throw new AIError('no_key');
+  if (s.provider === 'local') {
+    try { return await localComplete(s.localModel, { messages: [{ role: 'system', content: compactSystem(extra) }, ...messages], json, onText, maxTokens: onText ? 450 : 800, onProgress: showProgress }); }
+    catch (e) { console.warn(e); throw e.code ? new AIError(e.code, e.message) : new AIError('local', e.message); }
+  }
+  if (s.provider === 'ollama') return ollamaChat(s, [{ role: 'system', content: blocksText(system) }, ...messages], { json, onText });
+  return null; // Anthropic: tratado por quem chama
+}
+
 /** System em blocos: a parte estável primeiro (persona + biblioteca) para poder ficar em cache. */
 export function systemBlocks(extra = '', n = 12) {
   return [
@@ -79,8 +149,10 @@ export function systemBlocks(extra = '', n = 12) {
     { type: 'text', text: context(n) + (extra ? '\n\n' + extra : '') },
   ];
 }
-export async function complete({ system, messages, tier = 'default' }) {
-  const s = aiSettings(); if (!s.key) throw new AIError('no_key');
+export async function complete({ system, messages, tier = 'default', json = false }) {
+  const s = aiSettings();
+  if (s.provider !== 'anthropic') return ask({ system, messages, tier, json });
+  if (!s.key) throw new AIError('no_key');
   const r = await post(body(modelFor(tier, s), tier, { system, messages }), s.key);
   const msg = await r.json();
   if (msg.stop_reason === 'refusal') throw new AIError('refusal');
@@ -96,13 +168,15 @@ export function parseJSON(t) {
 /** Pede um objeto JSON ao coach, com o contexto completo do jogador. */
 export async function askJSON(task, tier = 'default') {
   const system = systemBlocks();
-  const text = await complete({ system, tier, messages: [{ role: 'user', content: `TAREFA:\n${task}\n\nResponde APENAS com um objeto JSON válido, sem texto à volta, em português de Portugal.` }] });
+  const text = await complete({ system, tier, json: true, messages: [{ role: 'user', content: `TAREFA:\n${task}\n\nResponde APENAS com um objeto JSON válido, sem texto à volta, em português de Portugal.` }] });
   return parseJSON(text);
 }
 
 /** Chat em streaming (SSE). onText recebe o texto acumulado. Devolve o texto final. */
-export async function chatStream(messages, onText, { system, tier = 'chat' } = {}) {
-  const s = aiSettings(); if (!s.key) throw new AIError('no_key');
+export async function chatStream(messages, onText, { system, tier = 'chat', extra = '' } = {}) {
+  const s = aiSettings();
+  if (s.provider !== 'anthropic') return ask({ system, messages, tier, onText, extra });
+  if (!s.key) throw new AIError('no_key');
   const r = await post(body(modelFor('default', s), tier, { system, messages, stream: true, max_tokens: 8000 }), s.key);
   const reader = r.body.getReader(), dec = new TextDecoder();
   let buf = '', acc = '', refused = false;
@@ -176,7 +250,6 @@ export async function adjustJSON(what, current, history, text, tier = 'default')
 /** Corre fn com o botão em estado "a carregar"; mostra o erro num toast. */
 export async function aiBtn(btn, label, fn) {
   const b = typeof btn === 'string' ? $(btn) : btn;
-  if (!hasAI()) { toast(aiErr({ code: 'no_key' }), 4000); return false; }
   const old = b?.innerHTML;
   if (b) { b.disabled = true; b.innerHTML = spin(label); }
   let ok = true;
@@ -185,7 +258,18 @@ export async function aiBtn(btn, label, fn) {
   return ok;
 }
 /** Linha que leva às Definições quando não há chave. */
-export const aiOff = (what = 'o coach') => group([item({ lead: 'key', title: 'Coach desligado', sub: `Cola a tua chave da API nas Definições para ativar ${what}.`, onclick: "go('settings')" })]);
+export const aiOff = (what = 'o coach') => group([item({ lead: 'spark', title: 'Precisa de um modelo de IA', sub: `Para ${what}, liga a IA no telemóvel (grátis) nas Definições.`, onclick: "go('settings')" })]);
+
+/** Pede ao modelo; sem modelo (ou se o modelo grátis falhar) usa o coach de regras. */
+export async function coachJSON(task, rules, tier = 'default') {
+  const s = aiSettings();
+  if (!hasAI(s)) return rules();
+  try { return await askJSON(task, tier); }
+  catch (e) {
+    if (s.provider === 'anthropic' || !rules) throw e;
+    console.warn(e); toast(`${aiErr(e)} Usei o coach offline.`, 4500); return rules();
+  }
+}
 /** Blocos de texto de uma resposta JSON do coach. */
 export function aiSections(ai, map) {
   return map.filter(([k]) => ai && ai[k] && (!Array.isArray(ai[k]) || ai[k].length)).map(([k, t]) => `<div class="ai-sect"><div class="t">${t}</div>${Array.isArray(ai[k]) ? `<ul>${ai[k].map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : `<div class="ai-text">${esc(ai[k])}</div>`}</div>`).join('');

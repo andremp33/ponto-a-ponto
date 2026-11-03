@@ -1,8 +1,9 @@
 /* Ponto a Ponto — service worker
    index.html: network-first (para apanhar versões novas); resto: cache-first.
    Incrementar CACHE_VERSION a cada release. */
-const CACHE_VERSION = 'pap-v2';
+const CACHE_VERSION = 'pap-v3';
 const FONT_CACHE = 'pap-fonts';
+const LIB_CACHE = 'pap-lib'; // motor do modelo local (WebLLM), para funcionar offline
 
 const SHELL = [
   './',
@@ -19,6 +20,8 @@ const SHELL = [
   './src/ai.js',
   './src/content.js',
   './src/science.js',
+  './src/rules.js',
+  './src/local-llm.js',
   './src/views/onboarding.js',
   './src/views/home.js',
   './src/views/train.js',
@@ -46,7 +49,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_VERSION && k !== FONT_CACHE).map((k) => caches.delete(k))))
+      // Só apaga caches antigas da app; as do modelo local (webllm/*) ficam.
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('pap-') && ![CACHE_VERSION, FONT_CACHE, LIB_CACHE].includes(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -59,10 +63,12 @@ self.addEventListener('fetch', (event) => {
   // A API da Anthropic nunca passa pela cache.
   if (url.hostname === 'api.anthropic.com') return;
 
-  // Google Fonts: cache-first numa cache própria que sobrevive às versões.
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+  // Google Fonts e motor do modelo local: cache-first numa cache própria que sobrevive às versões.
+  const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+  const isLib = url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/');
+  if (isFont || isLib) {
     event.respondWith(
-      caches.open(FONT_CACHE).then(async (cache) => {
+      caches.open(isFont ? FONT_CACHE : LIB_CACHE).then(async (cache) => {
         const hit = await cache.match(req);
         if (hit) return hit;
         const res = await fetch(req);

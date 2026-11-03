@@ -1,6 +1,7 @@
 /* Progresso: consistência, índice mental, check-ins, Schulte e revisão semanal */
 import { S, ofType, reflections, mentalIndex, avg, streak, activeDays, activityCounts, daysUntil, dayKey, shortDate, saveState, saveProfile, go, render } from '../core.js';
-import { askJSON, hasAI, aiBtn, aiOff, aiSections, addMemory } from '../ai.js';
+import { coachJSON, aiBtn, aiSections, addMemory } from '../ai.js';
+import * as rules from '../rules.js';
 import { $, esc, J, ic, f1, C, secTitle, bar, lineChart, heatmap, heatColor, toast } from '../ui.js';
 
 function reviewCard(r) {
@@ -22,7 +23,7 @@ function progress() {
   ${hasSchulte ? `${secTitle('Grelha de foco, em segundos')}<div class="panel"><div class="chartwrap" id="c3"></div><p class="hint" style="margin-bottom:0">Menos é melhor.</p></div>` : ''}
   ${!refl.length && checks.length < 2 ? `<div class="empty">Faz check-ins e reflexões para veres aqui a tua evolução.</div>` : ''}
   ${secTitle('Revisão semanal')}
-  ${hasAI() ? `<button class="btn" id="weekBtn" onclick="weeklyReview()">${ic('spark')}Pedir revisão semanal ao coach</button>` : aiOff('a revisão semanal')}
+  <button class="btn" id="weekBtn" onclick="weeklyReview()">${ic('spark')}Pedir revisão semanal ao coach</button>
   <div id="weekOut" class="mt">${lastRev ? reviewCard(lastRev) : ''}</div>`;
 }
 function progressAfter() {
@@ -39,7 +40,7 @@ function progressAfter() {
 }
 async function weeklyReview() {
   await aiBtn('#weekBtn', 'O coach está a rever a tua semana…', async () => {
-    const r = await askJSON(`Faz a revisão dos últimos 7-14 dias. Considera consistência do loop diário (${[...activeDays()].filter(k => daysUntil(k) >= -7).length} dias ativos na última semana), jogos, treinos, check-ins, objetivos e perfil mental. Chaves: "titulo" (até 8 palavras), "o_que_mudou" (2 frases), "padroes" (array de 2-3 padrões concretos), "prioridade" (a única coisa a trabalhar a seguir), "plano" (array de 3 ações para 7 dias), "foco_proximo" (máx. 8 palavras), "memoria" (array 0-2 notas novas para a tua memória).`);
+    const r = await coachJSON(`Faz a revisão dos últimos 7-14 dias. Considera consistência do loop diário (${[...activeDays()].filter(k => daysUntil(k) >= -7).length} dias ativos na última semana), jogos, treinos, check-ins, objetivos e perfil mental. Chaves: "titulo" (até 8 palavras), "o_que_mudou" (2 frases), "padroes" (array de 2-3 padrões concretos), "prioridade" (a única coisa a trabalhar a seguir), "plano" (array de 3 ações para 7 dias), "foco_proximo" (máx. 8 palavras), "memoria" (array 0-2 notas novas para a tua memória).`, () => rules.weeklyReview());
     r.ts = Date.now(); addMemory(r.memoria); S.state.reviews.push(r); saveState(); render();
   });
 }

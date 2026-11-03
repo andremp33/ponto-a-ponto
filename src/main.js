@@ -1,6 +1,8 @@
 /* Ponto a Ponto — arranque, router e tab bar */
 import * as core from './core.js';
 import * as ui from './ui.js';
+import * as ai from './ai.js';
+import { crashedLastTime } from './local-llm.js';
 import * as onboarding from './views/onboarding.js';
 import * as home from './views/home.js';
 import * as train from './views/train.js';
@@ -55,6 +57,11 @@ window.addEventListener('keydown', e => {
 window.addEventListener('error', e => console.error(e.error || e.message));
 
 core.loadLocal();
+// Se o iOS fechou a app enquanto o modelo local carregava (memória), volta ao coach offline.
+if (crashedLastTime() && ai.aiSettings().provider === 'local' && ai.aiSettings().localReady) {
+  ai.saveAiSettings({ provider: 'rules' });
+  setTimeout(() => ui.toast('A IA no telemóvel não terminou de carregar da última vez. Mudei para o coach offline; nas Definições podes escolher o modelo mais leve.', 7000), 800);
+}
 core.requestPersist();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e)));

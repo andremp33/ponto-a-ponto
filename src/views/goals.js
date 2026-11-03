@@ -1,7 +1,8 @@
 /* Objetivos: mental/ténis × processo/performance/resultado, passos e progresso */
 import { S, PN, uid, daysUntil, isoDate, saveState, go, back, replace, render } from '../core.js';
 import { PILLARS } from '../content.js';
-import { askJSON, hasAI, aiBtn } from '../ai.js';
+import { coachJSON, aiBtn } from '../ai.js';
+import * as rules from '../rules.js';
 import { $, esc, ic, item, group, secTitle, seg, slider, formData, bar, checkRow, confirmBox, toast } from '../ui.js';
 
 const label = g => `${g.area === 'mental' ? 'Mental' : 'Ténis'}, ${g.kind}`;
@@ -43,7 +44,7 @@ function goal() {
   ${g.deadline ? `<p class="muted">Prazo: ${isoDate(g.deadline)}${dd >= 0 ? `, faltam ${dd} ${dd === 1 ? 'dia' : 'dias'}` : ', já passou'}.${g.pillar ? ` Ligado a ${esc(PN[g.pillar].toLowerCase())}.` : ''}</p>` : g.pillar ? `<p class="muted">Ligado a ${esc(PN[g.pillar].toLowerCase())}.</p>` : ''}
   ${g.why ? `<div class="panel"><p class="faint" style="margin:0 0 4px">Porque importa</p><p style="margin:0">${esc(g.why)}</p></div>` : ''}
   <div class="group mt">${slider('gprog', 'Progresso', g.progress || 0, '', { min: 0, max: 100, step: 5, suffix: '%', onchange: `goalProg('${g.id}',this.value)` })}</div>
-  <div class="row between" style="margin:26px 2px 8px"><h2 class="sec-title" style="margin:0">Passos</h2>${hasAI() ? `<button class="btn small secondary" id="gStepsAi" onclick="goalSteps('${g.id}')">${ic('spark')}Dividir com o coach</button>` : ''}</div>
+  <div class="row between" style="margin:26px 2px 8px"><h2 class="sec-title" style="margin:0">Passos</h2>${`<button class="btn small secondary" id="gStepsAi" onclick="goalSteps('${g.id}')">${ic('spark')}Dividir com o coach</button>`}</div>
   <div class="group">${(g.steps || []).map((s, i) => checkRow(s.done, esc(s.t), `goalStep('${g.id}',${i})`)).join('') || '<p class="hint" style="margin:0;padding:14px 16px">Sem passos ainda.</p>'}
     <div class="row" style="padding:8px 16px 12px"><input type="text" id="gStep" aria-label="Novo passo" placeholder="Novo passo"><button class="btn small" onclick="goalAddStep('${g.id}')" aria-label="Acrescentar passo">${ic('plus')}</button></div></div>
   <div class="grid2 mt"><button class="btn secondary" onclick="go('goalEdit','${g.id}')">Editar</button><button class="btn" onclick="goalToggle('${g.id}')">${g.done ? 'Reabrir' : `${ic('check')}Concluído`}</button></div>
@@ -62,7 +63,7 @@ function goalDelete(id) { confirmBox('Apagar este objetivo?', () => { S.state.go
 async function goalSteps(id) {
   const g = byId(id);
   await aiBtn('#gStepsAi', 'A dividir…', async () => {
-    const r = await askJSON(`Divide este objetivo (${g.area}, ${g.kind}) em 3 a 5 passos de processo concretos e mensuráveis, adaptados ao jogador: "${g.title}"${g.deadline ? ' até ' + g.deadline : ''}. Chave: "passos" (array de strings até 14 palavras).`);
+    const r = await coachJSON(`Divide este objetivo (${g.area}, ${g.kind}) em 3 a 5 passos de processo concretos e mensuráveis, adaptados ao jogador: "${g.title}"${g.deadline ? ' até ' + g.deadline : ''}. Chave: "passos" (array de strings até 14 palavras).`, () => rules.goalSteps(g));
     (r.passos || []).forEach(t => g.steps.push({ t: String(t), done: false })); saveState(); render();
   });
 }
