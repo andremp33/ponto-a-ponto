@@ -18,4 +18,14 @@ Os dados ficam só no telemóvel. Usa Definições → Exportar para fazer cópi
 python3 -m http.server 8000   # http://localhost:8000
 ```
 
+Testes (Playwright, iPhone 390×844, API da Anthropic simulada; screenshots em `tests/out/`):
+
+```bash
+npm install
+npx playwright install chromium
+npm test
+```
+
+A cada release, incrementar `CACHE_VERSION` em `sw.js`.
+
 Ver `CLAUDE.md` para arquitetura, design system e plano de trabalho.
