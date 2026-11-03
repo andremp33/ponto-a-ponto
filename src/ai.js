@@ -1,6 +1,7 @@
 /* Ponto a Ponto — cliente da API Anthropic (chave do próprio utilizador, só neste dispositivo) */
 import { S, PK, PN, CHECK, dayKey, TODAY, pillarScores, currentFocus, upcomingTournament, saveProfile } from './core.js';
 import { $, esc, toast, spin, item, group } from './ui.js';
+import { scienceIndex } from './science.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const AI_LS = 'pap_ai';
@@ -71,6 +72,13 @@ async function post(payload, key) {
 const modelFor = (tier, s = aiSettings()) => (tier === 'quick' ? s.quickModel : s.model) || DEFAULT_MODELS[tier === 'quick' ? 'quickModel' : 'model'];
 const textOf = msg => (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 
+/** System em blocos: a parte estável primeiro (persona + biblioteca) para poder ficar em cache. */
+export function systemBlocks(extra = '', n = 12) {
+  return [
+    { type: 'text', text: `${PERSONA}\n\nBIBLIOTECA CIENTÍFICA (estudos na app; cita pelo autor e ano):\n${scienceIndex()}`, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: context(n) + (extra ? '\n\n' + extra : '') },
+  ];
+}
 export async function complete({ system, messages, tier = 'default' }) {
   const s = aiSettings(); if (!s.key) throw new AIError('no_key');
   const r = await post(body(modelFor(tier, s), tier, { system, messages }), s.key);
@@ -87,7 +95,7 @@ export function parseJSON(t) {
 
 /** Pede um objeto JSON ao coach, com o contexto completo do jogador. */
 export async function askJSON(task, tier = 'default') {
-  const system = `${PERSONA}\n\n${context()}`;
+  const system = systemBlocks();
   const text = await complete({ system, tier, messages: [{ role: 'user', content: `TAREFA:\n${task}\n\nResponde APENAS com um objeto JSON válido, sem texto à volta, em português de Portugal.` }] });
   return parseJSON(text);
 }
@@ -132,7 +140,11 @@ export async function testConnection(key, models) {
 }
 
 /* ===== persona e contexto ===== */
-export const PERSONA = `És um psicólogo do desporto especializado em ténis competitivo e és o coach mental pessoal deste jogador. Falas português de Portugal e tratas o jogador por "tu". És direto, caloroso e prático — sem frases feitas nem motivação vazia. Baseias-te em métodos com evidência: rotinas entre pontos (reagir, recuperar, preparar, ritual), reset após o erro (largar, corrigir, comprometer), objetivos de processo, palavras-chave, controlo da ativação pela respiração, reavaliação da ansiedade, diálogo interno instrucional, visualização, preparação tática com plano A/B. Quando ajuda, dás exemplos verídicos de jogadores profissionais, sem inventar citações nem factos. Ligas sempre o conselho aos dados concretos do jogador. És conciso e acionável: no máximo um ou dois exercícios de cada vez. Não dás conselhos médicos.`;
+export const PERSONA = `És o coach mental e de estratégia pessoal deste jogador de ténis competitivo: psicólogo do desporto e treinador tático ao mesmo tempo. Falas português de Portugal e tratas o jogador por "tu". És direto, caloroso e prático, sem frases feitas nem motivação vazia.
+Tomas a iniciativa: nunca pedes ao jogador para escrever um plano. Propões tu primeiro uma ideia ou um plano concreto (tática, rotinas, foco mental), com base nos dados dele, e depois ajustas ao que ele responder. Quando faltar informação, assumes o mais provável, dizes o que assumiste e fazes no máximo uma ou duas perguntas curtas.
+Baseias-te em métodos com evidência: rotinas entre pontos (reagir, recuperar, preparar, ritual), reset após o erro (largar, corrigir, comprometer), planos se-então, objetivos de processo, palavras-chave, foco externo, respiração com expiração longa, reavaliação da ansiedade, diálogo interno na 2.ª pessoa, visualização, padrões táticos (serviço + 1, direção da bola, altura e profundidade, jogar para a pancada fraca), preparação com plano A e B.
+Quando citares investigação, usa apenas os estudos da BIBLIOTECA CIENTÍFICA abaixo, pelo autor e ano; não inventes estudos, números nem citações. Exemplos de jogadores profissionais só com factos verificáveis.
+És conciso e acionável: no máximo um ou dois exercícios de cada vez. Não dás conselhos médicos.`;
 
 export function profileText() {
   const p = S.profile;
@@ -142,8 +154,8 @@ export function entryLine(e) {
   const d = dayKey(e.ts);
   const sk = e.skills ? ' Notas: ' + PK.filter(k => e.skills[k]).map(k => `${PN[k]} ${e.skills[k]}`).join(', ') + '.' : '';
   if (e.type === 'checkin') return `${d} CHECK-IN (${e.plan || '-'}): ${CHECK.map(([k, l]) => l.toLowerCase() + ' ' + e[k]).join(', ')}${e.sleep ? `, sono ${e.sleep}h` : ''}${e.intent ? `. Intenção: "${e.intent}"` : ''}`;
-  if (e.type === 'pre') return `${d} PRÉ-JOGO vs ${e.opp || '?'} (${e.surface || '-'}${e.round ? ', ' + e.round : ''}; estilo: ${e.oppStyle || '-'}), nervos ${e.nerves}/10. Plano A: ${e.planA || '-'}. Plano B: ${e.planB || '-'}. Riscos: ${e.threats || '-'}`;
-  if (e.type === 'post') return `${d} JOGO vs ${e.opp || '?'} — ${e.result || ''} ${e.score || ''}${e.round ? ' (' + e.round + ')' : ''}.${sk} Estatísticas: 1.º serv ${e.fs || '-'}%, duplas ${e.df || '-'}, BP ganhos ${e.bpw || '-'}/${e.bpt || '-'}. Bem: ${e.good || '-'}. Mal: ${e.bad || '-'}. Momento-chave: ${e.key || '-'}. Emoção: ${e.emotion || '-'}`;
+  if (e.type === 'pre') return `${d} PRÉ-JOGO vs ${e.opp || '?'} (${e.surface || '-'}${e.round ? ', ' + e.round : ''}; sabe do adversário: ${(e.oppTags || []).join(', ') || '-'}; estilo: ${e.oppStyle || '-'}), nervos ${e.nerves}/10. Plano A: ${e.planA || e.ai?.plano_a || '-'}. Plano B: ${e.planB || e.ai?.plano_b || '-'}. Riscos: ${e.threats || '-'}`;
+  if (e.type === 'post') return `${d} JOGO vs ${e.opp || '?'} — ${e.result || ''} ${e.score || ''}${e.round ? ' (' + e.round + ')' : ''}.${sk} Estatísticas: 1.º serv ${e.fs || '-'}%, duplas ${e.df || '-'}, BP ganhos ${e.bpw || '-'}/${e.bpt || '-'}. Bem: ${e.good || '-'}. Mal: ${e.bad || '-'}. Momento-chave: ${e.key || '-'}. Emoção: ${e.emotion || '-'}. O que pesou: ${(e.tags || []).join(', ') || '-'}${e.ai?.resumo ? `. Análise do coach: ${e.ai.resumo}` : ''}`;
   if (e.type === 'practice') return `${d} TREINO (${e.what || '-'}): qualidade ${e.quality}/10, intenção cumprida ${e.intentDone || '-'}/10.${sk} Aprendi: ${e.learned || '-'}`;
   return '';
 }
@@ -151,6 +163,13 @@ export function context(n = 12) {
   const sc = pillarScores(), p = S.profile, f = currentFocus(), d = S.state.days[TODAY()], t = upcomingTournament();
   const goals = S.state.goals.filter(g => !g.done).map(g => `- [${g.area}] ${g.title} (${g.kind}${g.deadline ? ', até ' + g.deadline : ''}, ${g.progress || 0}%)`).join('\n');
   return `PERFIL:\n${profileText()}\n\nPERFIL MENTAL ATUAL (1-10): ${PK.map(k => `${PN[k]} ${sc[k] != null ? sc[k].toFixed(1) : '-'}`).join('; ')}\nFoco atual: ${f ? f.text : '-'}. Palavras-chave: ${(p.cues || []).join(', ')}\n${d ? `Plano de hoje: competência ${PN[d.plan.pillar]}${d.plan.matchDay ? ' (dia de jogo)' : ''}.` : ''}\n${t ? `Próximo torneio: ${t.name} (${t.start}, ${t.surface || ''}). Objetivo: ${t.goal || '-'}` : ''}\n\nOBJETIVOS ATIVOS:\n${goals || '-'}\n\nO QUE JÁ SABES DESTE JOGADOR (memória do coach):\n${(p.coachMemory || []).map(m => '- ' + m.t).join('\n') || '-'}\n\nREGISTOS RECENTES (mais recente primeiro):\n${S.entries.slice(0, n).map(entryLine).join('\n') || '(sem registos)'}\n\nHoje é ${new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`;
+}
+
+/** Ajusta uma proposta anterior (JSON) ao que o jogador respondeu. Devolve o mesmo formato + "resposta". */
+export async function adjustJSON(what, current, history, text, tier = 'default') {
+  const clean = { ...current }; delete clean.resposta; delete clean.sugestoes;
+  const conv = (history || []).map(m => (m.r === 'u' ? 'Jogador: ' : 'Coach: ') + m.t).join('\n');
+  return askJSON(`Propuseste isto (${what}), em JSON:\n${JSON.stringify(clean)}\n${conv ? `\nConversa sobre a proposta até agora:\n${conv}\n` : ''}\nO jogador responde: "${text}"\n\nAjusta a proposta ao que ele disse, mantendo o que continua válido. Devolve o MESMO objeto JSON com as mesmas chaves (todas preenchidas), mais "resposta" (1-2 frases a dizer o que mudaste e porquê; se fizer sentido, termina com uma pergunta curta) e "sugestoes" (array de 2-3 respostas curtas que o jogador pode tocar, até 6 palavras cada, na voz do jogador).`, tier);
 }
 
 /* ===== ajudas de interface ===== */

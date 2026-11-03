@@ -22,7 +22,15 @@ const BASE = `http://localhost:${server.address().port}/`;
 
 /* ---------- API simulada ---------- */
 const calls = [];
+const BRIEF = { titulo: 'Hoje, pressão a servir', texto: 'Os teus últimos registos mostram tensão nos pontos importantes. Hoje treinamos a rotina antes do serviço.', acao: 'Serve 20 bolas em 30-40 com a rotina completa.', pilar: 'pressao', dia_de_jogo: false, estudo: 's_pontos', sugestoes: ['Hoje tenho jogo', 'Estou cansado', 'Só tenho 10 minutos'] };
 function answer(task) {
+  const adj = task.match(/Propuseste isto \(([^)]+)/);
+  if (adj) {
+    const base = answer(adj[1].includes('cartão') ? 'preparar o plano' : adj[1].includes('análise') ? 'registou este jogo' : adj[1].includes('torneio') ? 'torneio "' : adj[1].includes('hoje') ? 'plano do coach para hoje' : 'Reflexão de treino');
+    const jogo = /tenho jogo/i.test(task);
+    return { ...base, ...(adj[1].includes('hoje') ? { dia_de_jogo: jogo, titulo: jogo ? 'Dia de jogo: rotina e plano A' : base.titulo } : { plano: 'Plano ajustado: contra um canhoto, serve para a esquerda dele no lado da vantagem.' }), resposta: 'Ajustei o plano ao que disseste. Queres que treinemos isso amanhã?', sugestoes: ['Sim', 'Prefiro outra coisa'] };
+  }
+  if (/plano do coach para hoje/.test(task)) return BRIEF;
   if (/visualização guiada/.test(task)) return { titulo: 'Servir para fechar', descricao: 'Ensaio do momento de fechar o set.', passos: Array.from({ length: 8 }, (_, i) => ({ texto: `Passo ${i + 1}. Respira e sente a raquete.`, segundos: 8 })) };
   if (/Divide este objetivo/.test(task)) return { passos: ['Fazer a rotina em todos os pontos do treino', 'Registar 3 jogos com nota de rotina', 'Rever a rotina com o treinador'] };
   if (/torneio "/.test(task)) return { antes: ['Dormir 8 horas', 'Treinar pontos a partir do serviço'], vespera: ['Preparar o saco', 'Visualização de 5 minutos'], dia_de_jogo: ['Aquecer 20 min', 'Rotina pré-jogo 10 min'], entre_jogos: ['Comer e hidratar', 'Rever 2 notas'], depois_derrota: ['Escrever 3 aprendizagens'], foco_mental: 'Um ponto de cada vez' };
@@ -30,7 +38,7 @@ function answer(task) {
   if (/frase de treinador/.test(task)) return { frase: 'Pés antes, mais altura, tu sabes esta bola' };
   if (/insight curto/.test(task)) return { titulo: 'Hoje, a 2.ª bola', texto: 'Nos teus jogos, os pontos longos correm melhor quando atacas a 2.ª bola. Hoje, faz 10 minutos disso.' };
   if (/onboarding/.test(task) || /Conversa recente/.test(task)) return { memoria: ['Joga melhor em terra batida', 'Fica nervoso no início'] };
-  if (/Pré-jogo|Cartão de jogo/.test(task)) return { plano: 'Servir aberto no deuce e atacar a direita inside-in. Mais altura se ele devolver tudo.', chaves: ['Pés', 'Respira', 'Agressivo'], primeiros_jogos: 'Serve com margem e procura ritmo.', se_correr_mal: 'Mais altura e peso; sobe à rede.', reset: 'Larga, corrige, compromete.', ativacao: 'Suspiro fisiológico antes de servir.', visualizacao: 'Fecha os olhos. Vês o court. Respiras. Serves aberto. Sentes a bola sair.' };
+  if (/preparar o plano|Cartão de jogo/.test(task)) return { plano_a: 'Servir aberto no deuce e jogar a direita inside-in.', plano_b: 'Mais altura e peso para a esquerda dele.', padroes: ['Serviço aberto e direita para o espaço', 'Bola alta para a esquerda'], estudo: 's_objetivos', sugestoes: ['Ele é canhoto', 'Já perdi com ele', 'Estou cansado'], plano: 'Servir aberto no deuce e atacar a direita inside-in. Mais altura se ele devolver tudo.', chaves: ['Pés', 'Respira', 'Agressivo'], primeiros_jogos: 'Serve com margem e procura ritmo.', se_correr_mal: 'Mais altura e peso; sobe à rede.', reset: 'Larga, corrige, compromete.', ativacao: 'Suspiro fisiológico antes de servir.', visualizacao: 'Fecha os olhos. Vês o court. Respiras. Serves aberto. Sentes a bola sair.' };
   if (/registou este jogo|Analisa este jogo/.test(task)) return { resumo: 'Começaste nervoso mas encontraste a rotina no 2.º set.', padrao: 'Ainda poucos dados', ponto_forte: 'Resiliência depois do break.', a_trabalhar: 'Pressão a servir para o set.', exercicio: 'Servir para o set 10 vezes, 15 min.', foco_proximo: 'Rotina antes de servir', memoria: ['Perde o 1.º set por nervos'] };
   if (/Reflexão de treino/.test(task)) return { resumo: 'Treino de qualidade.', a_trabalhar: 'Manter a intenção nos pontos.', exercicio: 'Pontos a partir do serviço.', foco_proximo: 'Intenção em cada bola' };
   return { ok: true };
@@ -60,7 +68,11 @@ await ctx.route('https://api.anthropic.com/**', async route => {
   const task = body.messages.at(-1).content;
   return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: JSON.stringify({ content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: JSON.stringify(answer(task)) }], stop_reason: 'end_turn' }) });
 });
-await ctx.addInitScript(() => { if (!localStorage.getItem('pap_ai')) localStorage.setItem('pap_ai', JSON.stringify({ key: 'sk-ant-teste' })); });
+await ctx.addInitScript(() => {
+  if (!localStorage.getItem('pap_ai')) localStorage.setItem('pap_ai', JSON.stringify({ key: 'sk-ant-teste' }));
+  // Sem folha de partilha no headless: a cópia de segurança cai no download.
+  try { delete Navigator.prototype.share; delete Navigator.prototype.canShare; } catch {}
+});
 const page = await ctx.newPage();
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -123,11 +135,12 @@ try {
   await page.waitForSelector('#obRadar svg'); await shot('onboarding-6');
   await click('button:has-text("Começar o programa")');
   await page.waitForSelector('.court');
-  await shot('hoje');
+  await page.waitForSelector('.brief h2'); await shot('hoje');
 
   /* Lição */
   step('Lição');
   await click('.group .item:nth-child(2)'); await page.waitForSelector('.prose');
+  if (!await page.locator('h2:has-text("A ciência por trás")').count()) problems.push('Lição sem estudos ligados');
   await shot('licao');
   await click('button:has-text("Marcar como lida")');
 
@@ -155,8 +168,14 @@ try {
   /* Preparar jogo */
   step('Preparar jogo');
   await page.evaluate(() => go('pre'));
-  await page.fill('#pOpp', 'João'); await page.fill('#pStyle', 'Defensivo'); await page.fill('#pA', 'Servir aberto');
+  await page.fill('#pOpp', 'João'); await click('.chipset button:has-text("Defensivo")'); await click('.chipset button:has-text("Esquerda fraca")');
+  if (await page.locator('#pA').count()) problems.push('Com o coach ativo, o jogador não devia ter de escrever o plano A');
+  await shot('tenho-jogo');
   await click('#preBtn'); await page.waitForSelector('.cues'); await shot('cartao-de-jogo');
+  await click('.adjust .scroller button:has-text("Ele é canhoto")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('Ajustei')));
+  if (!(await page.locator('.panel.ink h2').innerText()).includes('canhoto')) problems.push('O cartão não foi atualizado depois do ajuste');
+  await shot('cartao-ajustado');
   await click('button:has-text("Ouvir")'); await page.waitForSelector('.player'); await page.evaluate(() => stopPlayer());
 
   /* Rever jogo */
@@ -164,9 +183,12 @@ try {
   await click('button:has-text("Rever este jogo")');
   await click('.seg[data-name=result] button:has-text("Derrota")'); await page.fill('#oScore', '4-6 6-3 8-10');
   await click('summary:has-text("Estatísticas")'); await page.fill('#sFs', '61'); await page.fill('#sDf', '4'); await page.fill('#sBw', '2'); await page.fill('#sBt', '7');
-  await click('.chipset button:has-text("Nervos")');
-  await page.fill('#oGood', 'Reação ao break'); await shot('rever-jogo-form');
-  await click('#postBtn'); await page.waitForSelector('.panel.ink'); await shot('rever-jogo');
+  await click('.chipset[data-name=emotion] button:has-text("Nervos")'); await click('.chipset[data-name=postTags] button:has-text("Break points")');
+  await click('summary:has-text("Notas")'); await page.fill('#oGood', 'Reação ao break'); await shot('rever-jogo-form');
+  await click('#postBtn'); await page.waitForSelector('.panel.ink');
+  await click('.adjust .scroller button:has-text("Os nervos foram o problema")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('Ajustei')));
+  await shot('rever-jogo');
 
   /* Reflexão de treino */
   step('Reflexão');
@@ -216,11 +238,16 @@ try {
   const d = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
   await page.fill('#tName', 'Open de Lisboa'); await page.fill('#tStart', d); await page.fill('#tGoal', 'Chegar aos quartos');
   await click('button:has-text("Guardar")'); await click('#tpBtn'); await page.waitForSelector('.check');
-  await click('.check'); await shot('torneio');
+  await click('.check');
+  await click('.adjust .scroller button:has-text("Viajo na véspera")');
+  await page.waitForFunction(() => [...document.querySelectorAll('.adjust .msg.a')].some(m => m.textContent.includes('Ajustei')));
+  await shot('torneio');
 
   /* Coach */
   step('Coach');
   await click('.tabbar button:has-text("Coach")');
+  await page.waitForFunction(() => document.querySelectorAll('.msg.a').length >= 1 && !document.querySelector('#live'));
+  if (!await page.evaluate(() => S.chat[0]?.role === 'assistant')) problems.push('O coach não abriu a conversa');
   await click('.scroller button:has-text("Que padrões")');
   await page.waitForFunction(() => document.querySelectorAll('.msg.a').length >= 1 && !document.querySelector('#live'));
   await page.fill('#chatIn', 'E a pressão a servir?'); await page.keyboard.press('Enter');
@@ -232,15 +259,19 @@ try {
   await page.screenshot({ path: join(OUT, `${String(++n).padStart(2, '0')}-coach-ecra.png`) });
 
   /* Insight */
-  step('Insight');
-  await click('.tabbar button:has-text("Hoje")');
-  await click('.item:has-text("Insight do dia")'); await page.waitForSelector('.panel.ink h3');
+  step('Plano do dia ajustado');
+  await click('.tabbar button:has-text("Hoje")'); await page.waitForSelector('.brief h2');
+  await click('.brief .scroller button:has-text("Hoje tenho jogo")');
+  await page.waitForFunction(() => document.querySelector('.court .kicker')?.textContent.includes('Dia de jogo'), null, { timeout: 8000 });
   await shot('hoje-depois');
 
   /* Treinar */
   step('Treinar');
   await click('.tabbar button:has-text("Treinar")'); await shot('treinar-sessoes');
   await click('.scroller button:has-text("Biblioteca")'); await click('.scroller button:has-text("Pressão")'); await shot('treinar-biblioteca');
+  await click('.scroller button:has-text("Ciência")'); await shot('treinar-ciencia');
+  await click('.item:has-text("pontos importantes")'); await page.waitForSelector('a.item[href^="https://"]'); await shot('estudo');
+  await click('button.back');
   await click('.scroller button:has-text("Neuro")'); await shot('treinar-neuro');
   await click('.scroller button:has-text("Personalizado")');
   await click('#visBtn'); await page.waitForSelector('.player'); await page.evaluate(() => stopPlayer());
@@ -259,12 +290,16 @@ try {
   step('Definições');
   await page.evaluate(() => go('settings'));
   await click('#aiTest'); await page.waitForSelector('#aiTestOut .group'); await shot('definicoes');
-  const [dl] = await Promise.all([page.waitForEvent('download'), click('button:has-text("Exportar")')]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), click('button:has-text("Guardar cópia")')]);
+  await page.waitForFunction(() => document.querySelector('#storeInfo')?.textContent.includes('Hoje'));
   const exported = await readFile(await dl.path(), 'utf8');
   if (/sk-ant/.test(exported)) problems.push('A cópia exportada contém a chave da API');
   await page.evaluate(() => { S.profile.name = 'Outra'; S.entries = []; saveProfile(); go('settings'); });
   await click('summary:has-text("Colar JSON")'); await page.fill('#impTxt', exported);
   await click('.inner button:has-text("Importar")'); await click('#yes');
+  await page.evaluate(() => go('settings'));
+  if (!await page.locator('button:has-text("Repor os dados anteriores")').count()) problems.push('Sem opção para repor os dados anteriores');
+  await page.evaluate(() => go('home'));
   const after = await page.evaluate(() => ({ name: S.profile.name, entries: S.entries.length, view: S.view }));
   if (after.name !== 'Rita' || after.entries < 4 || after.view !== 'home') problems.push('Importação falhou: ' + JSON.stringify(after));
   step(`  importação: ${JSON.stringify(after)}`);

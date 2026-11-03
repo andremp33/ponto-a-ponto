@@ -4,6 +4,7 @@ import { PILLARS, LESSONS, SESSIONS, PILLAR_TRAINING } from '../content.js';
 import { askJSON, hasAI, aiBtn, aiOff, entryLine } from '../ai.js';
 import { $, esc, J, ic, item, group, secTitle, seg, bar, toast } from '../ui.js';
 import { openPlayer } from './player.js';
+import { scienceList, studiesForPillar, studyRow } from './science.js';
 
 export function startTraining(id) {
   if (id === 'neuro_schulte' || id === 'neuro_react') return go('neuro', id);
@@ -11,7 +12,7 @@ export function startTraining(id) {
   openPlayer(id);
 }
 const sessIcon = s => s.kind === 'breath' ? 'wind' : 'heart';
-const TABS = [['hoje', 'Sessões'], ['lib', 'Biblioteca'], ['neuro', 'Neuro'], ['ai', 'Personalizado']];
+const TABS = [['hoje', 'Sessões'], ['lib', 'Biblioteca'], ['ciencia', 'Ciência'], ['neuro', 'Neuro'], ['ai', 'Personalizado']];
 
 function tabSessions() {
   return `<p class="lede">Treino mental guiado com voz. Usa auriculares.</p>
@@ -50,7 +51,7 @@ function train() {
   const tab = S.trainTab, sc = pillarScores();
   const weak = Object.keys(PN).sort((a, b) => (sc[a] ?? 6) - (sc[b] ?? 6))[0];
   const rec = trainingInfo(PILLAR_TRAINING[weak]);
-  const body = { hoje: tabSessions, lib: tabLibrary, neuro: tabNeuro, ai: tabCustom }[tab] || tabSessions;
+  const body = { hoje: tabSessions, lib: tabLibrary, ciencia: scienceList, neuro: tabNeuro, ai: tabCustom }[tab] || tabSessions;
   return `<h1 style="margin-bottom:14px">Treinar</h1>
   <div class="scroller mb" role="tablist" aria-label="Secções">${TABS.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}" onclick="setTrainTab('${k}')">${l}</button>`).join('')}</div>
   ${tab === 'hoje' ? `<button class="panel ink rec" onclick="startTraining('${PILLAR_TRAINING[weak]}')"><span class="muted">Recomendado para ti</span><b>${esc(rec.n)}</b><span class="muted">Para ${esc(PN[weak].toLowerCase())}, a tua competência mais baixa.</span></button>` : ''}
@@ -79,6 +80,7 @@ function lesson() {
   ${secTitle('No circuito')}<div class="panel"><p class="pro" style="margin:0">${esc(l.pro)}</p></div>
   ${secTitle('Desafio no court')}<div class="panel"><p style="margin:0">${esc(l.drill)}</p></div>
   <div class="panel ink mt"><p class="muted" style="margin:0 0 4px">Leva contigo</p><p class="display takeaway" style="margin:0">${esc(l.key)}</p></div>
+  ${studiesForPillar(l.p).length ? `${secTitle('A ciência por trás')}${group(studiesForPillar(l.p).slice(0, 2).map(s => studyRow(s.id)))}` : ''}
   <button class="btn mt" onclick="finishLesson('${l.id}')" ${today ? 'aria-disabled="true"' : ''}>${today ? `${ic('check')}Lida hoje` : 'Marcar como lida'}</button>
   <button class="btn secondary mt" onclick="askCoachAbout(${J('Sobre a lição "' + l.t + '": como aplico isto ao meu jogo?')})">${ic('coach')}Perguntar ao coach</button>`;
 }

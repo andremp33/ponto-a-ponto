@@ -32,11 +32,21 @@ src/
   ai.js                    cliente da API Anthropic (ver abaixo), askJSON, chatStream, contexto/persona
   ui.js                    componentes (slider, seg, chipset, sheet, toast, confirm), ícones SVG, gráficos (radar, linhas, heatmap)
   content.js
+  science.js               biblioteca científica (estudos verificados, com link); o coach recebe um índice dela
   styles.css
   views/
     onboarding.js  home.js  train.js  player.js  neuro.js  match.js (pre/post/practice/entry)
     coach.js  me.js  goals.js  tournaments.js  progress.js  settings.js
+    adjust.js  (conversa "o coach propõe → o jogador afina" para cartão de jogo, análise, torneio e plano do dia)
+    science.js (separador Ciência e página de cada estudo)
 ```
+
+### Coach proativo (v3.1)
+
+- O coach toma a iniciativa: plano do dia gerado sozinho no Hoje, cartão de jogo a partir de toques (adversário, superfície, chips), análise pós-jogo com conversa, abertura do chat pelo coach.
+- Cada proposta devolve `sugestoes` (respostas que o jogador toca) e pode ser ajustada com `adjustJSON` (mesmo formato JSON + `resposta`). A conversa fica em `thread` no objeto.
+- Só citar estudos de `src/science.js`; novos estudos só com fonte verificada (autor, ano, revista, link).
+- Dados: `localStorage` + `navigator.storage.persist()`, cópia para o iCloud/Ficheiros via folha de partilha, lembrete de cópia a cada 14 dias, "Repor os dados anteriores" depois de importar/apagar.
 
 Os templates usam `onclick="..."` inline como no legacy; cada módulo de vista expõe os handlers com `Object.assign(window, {...})`. (Se preferires, migra para delegação de eventos com `data-action`, mas mantém tudo sem build.)
 

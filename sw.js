@@ -1,7 +1,7 @@
 /* Ponto a Ponto — service worker
    index.html: network-first (para apanhar versões novas); resto: cache-first.
    Incrementar CACHE_VERSION a cada release. */
-const CACHE_VERSION = 'pap-v1';
+const CACHE_VERSION = 'pap-v2';
 const FONT_CACHE = 'pap-fonts';
 
 const SHELL = [
@@ -18,6 +18,7 @@ const SHELL = [
   './src/ui.js',
   './src/ai.js',
   './src/content.js',
+  './src/science.js',
   './src/views/onboarding.js',
   './src/views/home.js',
   './src/views/train.js',
@@ -30,6 +31,8 @@ const SHELL = [
   './src/views/tournaments.js',
   './src/views/progress.js',
   './src/views/settings.js',
+  './src/views/adjust.js',
+  './src/views/science.js',
 ];
 
 self.addEventListener('install', (event) => {

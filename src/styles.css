@@ -291,3 +291,23 @@ body:has(.player),body:has(.modal){overflow:hidden}
 .composer textarea{resize:none}
 .item .chev{display:flex}.item .chev svg{width:18px;height:18px}
 .check.on .bx{color:#fff;text-decoration:none}
+
+/* ---------- coach proativo, ciência ---------- */
+a.item{text-decoration:none}
+.brief{margin-top:14px}
+.brief h2{margin-top:2px}
+.brief-act{margin:12px 0 0;padding-top:12px;border-top:1px solid rgba(255,255,255,.18)}
+.adjust .chat{margin-top:10px}
+.adjust .scroller{margin-top:6px}
+.composer.inline{position:static;padding:4px 0 0;background:none}
+.adjust.on-ink{margin-top:14px}
+.adjust.on-ink .scroller{margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px}
+.adjust.on-ink .scroller button{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff}
+.adjust.on-ink .msg.u{background:var(--ball);color:var(--ink)}
+.adjust.on-ink .msg.a{background:rgba(255,255,255,.1);color:#fff}
+.adjust.on-ink textarea{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25);color:#fff}
+.adjust.on-ink textarea::placeholder{color:rgba(255,255,255,.6)}
+.adjust.on-ink .btn.adj-send{background:var(--ball);color:var(--ink)}
+.adjust .spin{border-color:var(--rule);border-top-color:var(--ink);vertical-align:-3px}
+.adjust.on-ink .spin,.brief .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff;vertical-align:-3px}
+.adj-in{min-height:48px}

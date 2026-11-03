@@ -7,6 +7,7 @@ export const CHECK = [['energia', 'Energia'], ['confianca', 'Confiança'], ['foc
 export const CH_MAP = { 'Ficar nervoso no início dos jogos': 'emocoes', 'Fechar sets e jogos': 'pressao', 'Irritar-me com erros não forçados': 'reset', 'Perder a concentração': 'foco', 'Adversários que devolvem tudo': 'foco', 'Pensar no resultado': 'foco', 'Linguagem corporal negativa': 'corpo', 'Perder vantagens': 'pressao', 'Jogar contra quem tem ranking pior': 'pressao', 'Duplas faltas sob pressão': 'rotinas', 'Recuperar depois de perder um set': 'reset', 'Batotas e bolas duvidosas': 'emocoes' };
 export const LS = 'pap_v3';
 const LEGACY_LS = 'pap_v2';
+const UNDO = 'pap_v3_undo';
 
 export const DEFAULT_PROFILE = {
   onboarded: false, name: '', level: 'Clube', ranking: '', years: '',
@@ -14,7 +15,7 @@ export const DEFAULT_PROFILE = {
   extra: '', challenges: [], baseline: {}, seasonGoal: '', days: '4', duration: '10',
   cues: ['Respira', 'Pés', 'Agressivo'], focusPillar: '', weekFocus: '', coachMemory: [], voice: true, reminder: '19:00'
 };
-export const DEFAULT_STATE = { goals: [], tournaments: [], lessonsDone: {}, neuro: [], days: {}, insights: {}, reframes: [], sessionsLog: [], customSessions: [], reviews: [] };
+export const DEFAULT_STATE = { goals: [], tournaments: [], lessonsDone: {}, neuro: [], days: {}, insights: {}, reframes: [], sessionsLog: [], customSessions: [], reviews: [], briefs: {} };
 
 export const S = {
   profile: { ...DEFAULT_PROFILE }, state: clone(DEFAULT_STATE), entries: [], chat: [],
@@ -73,6 +74,7 @@ function trimState() {
   st.neuro = st.neuro.slice(-200); st.sessionsLog = st.sessionsLog.slice(-300); st.customSessions = st.customSessions.slice(-10); st.reviews = st.reviews.slice(-12);
   const dk = Object.keys(st.days).sort(); if (dk.length > 150) dk.slice(0, dk.length - 150).forEach(k => delete st.days[k]);
   const ik = Object.keys(st.insights).sort(); if (ik.length > 14) ik.slice(0, ik.length - 14).forEach(k => delete st.insights[k]);
+  const bk = Object.keys(st.briefs).sort(); if (bk.length > 14) bk.slice(0, bk.length - 14).forEach(k => delete st.briefs[k]);
 }
 export function saveState() { trimState(); persist(); }
 export function saveProfile() { persist(); }
@@ -82,7 +84,34 @@ export function saveEntry(e) {
   S.entries.sort((a, b) => b.ts - a.ts); persist();
 }
 export function deleteEntry(id) { S.entries = S.entries.filter(x => x.id !== id); persist(); }
-export function resetData() { applyData({}); persist(); }
+function keepUndo() { try { const cur = localStorage.getItem(LS); if (cur) localStorage.setItem(UNDO, cur); } catch {} }
+export function resetData() { keepUndo(); applyData({}); persist(); }
+export const hasUndo = () => { try { return !!localStorage.getItem(UNDO); } catch { return false; } };
+export function restoreUndo() {
+  const raw = localStorage.getItem(UNDO); if (!raw) return false;
+  applyData(JSON.parse(raw)); persist(); localStorage.removeItem(UNDO); return true;
+}
+
+/* Metadados do dispositivo (fora da cópia exportada): última cópia, armazenamento persistente. */
+const META = 'pap_meta';
+export function getMeta() { try { return JSON.parse(localStorage.getItem(META) || '{}') || {}; } catch { return {}; } }
+export function setMeta(patch) { try { localStorage.setItem(META, JSON.stringify({ ...getMeta(), ...patch })); } catch {} }
+export async function requestPersist() {
+  try {
+    if (!navigator.storage?.persist) return null;
+    const ok = (await navigator.storage.persisted()) || (await navigator.storage.persist());
+    setMeta({ persisted: ok }); return ok;
+  } catch { return null; }
+}
+export async function storageInfo() {
+  const out = { persisted: getMeta().persisted ?? null, usage: null, bytes: 0 };
+  try { out.bytes = (localStorage.getItem(LS) || '').length * 2; } catch {}
+  try { if (navigator.storage?.persisted) out.persisted = await navigator.storage.persisted(); } catch {}
+  try { if (navigator.storage?.estimate) out.usage = (await navigator.storage.estimate()).usage; } catch {}
+  return out;
+}
+/** Dias desde a última cópia de segurança (null = nunca). */
+export function daysSinceBackup() { const t = getMeta().lastBackup; return t ? Math.floor((Date.now() - t) / 864e5) : null; }
 
 /* Cópia de segurança. A chave da API fica de fora de propósito. */
 export function exportJSON() {
@@ -99,7 +128,7 @@ export function parseBackup(text) {
   if (d.entries && !Array.isArray(d.entries)) throw new Error('Registos inválidos.');
   return { data: d, entries: normalizeEntries(d.entries).length, name: d.profile?.name || '', onboarded: !!d.profile?.onboarded };
 }
-export function importBackup(d) { applyData(d); persist(); }
+export function importBackup(d) { keepUndo(); applyData(d); persist(); }
 
 /* ===== motor ===== */
 export const ofType = (...t) => S.entries.filter(e => t.includes(e.type));
@@ -133,6 +162,7 @@ function chooseLesson(pillar, matchDay) {
 export function isMatchDay() {
   const t = TODAY(); const ci = ofType('checkin').find(e => dayKey(e.ts) === t);
   if (ci && ci.plan === 'jogo') return true;
+  if (S.state.days[t]?.matchFlag) return true;
   if (ofType('pre').some(e => dayKey(e.ts) === t)) return true;
   return S.state.tournaments.some(x => x.start && x.start <= t && (x.end || x.start) >= t);
 }
@@ -144,10 +174,21 @@ export function plan(force) {
     const pillar = choosePillar(y?.plan?.pillar);
     const lesson = chooseLesson(pillar, md);
     const lp = LESSONS.find(l => l.id === lesson).p;
-    d = { plan: { pillar: md ? lp : pillar, lesson, training: md ? 'vis_prejogo' : PILLAR_TRAINING[pillar], matchDay: md }, done: { ...(d?.done || {}) }, challengeNote: d?.challengeNote || '' };
+    d = { plan: { pillar: md ? lp : pillar, lesson, training: md ? 'vis_prejogo' : PILLAR_TRAINING[pillar], matchDay: md }, done: { ...(d?.done || {}) }, challengeNote: d?.challengeNote || '', ...(d?.matchFlag ? { matchFlag: true } : {}) };
     S.state.days[t] = d; saveState();
   }
   return d;
+}
+/** O coach (ou o jogador) muda o foco de hoje. Mantém o que já foi feito. */
+export function setDayPillar(pillar) {
+  if (!PN[pillar]) return;
+  const d = plan(); if (d.plan.pillar === pillar) return;
+  if (!d.done.lesson) d.plan.lesson = chooseLesson(pillar, false);
+  if (!d.done.training) d.plan.training = PILLAR_TRAINING[pillar];
+  d.plan.pillar = pillar; d.plan.forced = true; saveState();
+}
+export function setMatchToday(on) {
+  const d = plan(); d.matchFlag = !!on; saveState(); plan(true);
 }
 export function markDone(step) { const d = plan(); if (!d.done[step]) { d.done[step] = Date.now(); saveState(); } }
 export function loopStatus() {

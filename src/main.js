@@ -13,14 +13,16 @@ import * as goals from './views/goals.js';
 import * as tournaments from './views/tournaments.js';
 import * as progress from './views/progress.js';
 import * as settings from './views/settings.js';
+import * as adjust from './views/adjust.js';
+import * as science from './views/science.js';
 
 const { S, hooks } = core;
 const { $, ic } = ui;
-const MODULES = [onboarding, home, train, player, neuro, match, coach, me, goals, tournaments, progress, settings];
+const MODULES = [onboarding, home, train, player, neuro, match, coach, me, goals, tournaments, progress, settings, adjust, science];
 const VIEWS = Object.assign({}, ...MODULES.map(m => m.views));
 
 const TABS = [['home', 'ball', 'Hoje'], ['train', 'target', 'Treinar'], ['add', 'plus', 'Registar'], ['coach', 'coach', 'Coach'], ['me', 'me', 'Eu']];
-const TAB_OF = { home: 'home', checkin: 'home', challenge: 'home', train: 'train', lesson: 'train', neuro: 'train', reframe: 'train', coach: 'coach', me: 'me', goals: 'me', goal: 'me', goalEdit: 'me', tournaments: 'me', tournament: 'me', tournamentEdit: 'me', progress: 'me', history: 'me', entry: 'me', settings: 'me' };
+const TAB_OF = { home: 'home', checkin: 'home', challenge: 'home', train: 'train', lesson: 'train', science: 'train', neuro: 'train', reframe: 'train', coach: 'coach', me: 'me', goals: 'me', goal: 'me', goalEdit: 'me', tournaments: 'me', tournament: 'me', tournamentEdit: 'me', progress: 'me', history: 'me', entry: 'me', settings: 'me' };
 const TITLES = { home: 'Hoje', train: 'Treinar', coach: 'Coach', me: 'Eu', onboarding: 'Bem-vindo', settings: 'Definições', progress: 'Progresso', goals: 'Objetivos', tournaments: 'Torneios', history: 'Diário' };
 
 function renderTabs() {
@@ -53,7 +55,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('error', e => console.error(e.error || e.message));
 
 core.loadLocal();
-navigator.storage?.persist?.().catch(() => {});
+core.requestPersist();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e)));
 }
