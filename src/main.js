@@ -1,19 +1,27 @@
 /* Ponto a Ponto — arranque, router e tab bar */
 import * as core from './core.js';
 import * as ui from './ui.js';
-import * as ai from './ai.js';
+import * as onboarding from './views/onboarding.js';
+import * as home from './views/home.js';
+import * as train from './views/train.js';
+import * as player from './views/player.js';
+import * as neuro from './views/neuro.js';
+import * as match from './views/match.js';
+import * as coach from './views/coach.js';
+import * as me from './views/me.js';
+import * as goals from './views/goals.js';
+import * as tournaments from './views/tournaments.js';
+import * as progress from './views/progress.js';
 import * as settings from './views/settings.js';
 
 const { S, hooks } = core;
 const { $, ic } = ui;
-const MODULES = [settings];
-
-const VIEWS = Object.assign({
-  home: () => `<h1>Ponto a Ponto</h1><p class="lede">A preparar a app…</p><button class="btn" onclick="go('settings')">Definições</button>`,
-}, ...MODULES.map(m => m.views));
+const MODULES = [onboarding, home, train, player, neuro, match, coach, me, goals, tournaments, progress, settings];
+const VIEWS = Object.assign({}, ...MODULES.map(m => m.views));
 
 const TABS = [['home', 'ball', 'Hoje'], ['train', 'target', 'Treinar'], ['add', 'plus', 'Registar'], ['coach', 'coach', 'Coach'], ['me', 'me', 'Eu']];
-const TAB_OF = { home: 'home', train: 'train', coach: 'coach', me: 'me', lesson: 'train', session: 'train', neuro: 'train', reframe: 'train', challenge: 'home', checkin: 'home', goals: 'me', goal: 'me', goalEdit: 'me', tournaments: 'me', tournament: 'me', tournamentEdit: 'me', progress: 'me', history: 'me', entry: 'me', settings: 'me' };
+const TAB_OF = { home: 'home', checkin: 'home', challenge: 'home', train: 'train', lesson: 'train', neuro: 'train', reframe: 'train', coach: 'coach', me: 'me', goals: 'me', goal: 'me', goalEdit: 'me', tournaments: 'me', tournament: 'me', tournamentEdit: 'me', progress: 'me', history: 'me', entry: 'me', settings: 'me' };
+const TITLES = { home: 'Hoje', train: 'Treinar', coach: 'Coach', me: 'Eu', onboarding: 'Bem-vindo', settings: 'Definições', progress: 'Progresso', goals: 'Objetivos', tournaments: 'Torneios', history: 'Diário' };
 
 function renderTabs() {
   const bar = $('#tabbar');
@@ -26,20 +34,27 @@ function renderTabs() {
 }
 
 hooks.render = () => {
+  if (!S.profile.onboarded && S.view !== 'onboarding') S.view = 'onboarding';
+  let html = (VIEWS[S.view] || VIEWS.home)();
+  if (html == null) { S.view = 'home'; S.param = null; html = VIEWS.home(); }
   renderTabs();
-  const fn = VIEWS[S.view] || VIEWS.home;
-  $('#main').innerHTML = fn();
+  $('#main').innerHTML = html;
+  document.title = `${TITLES[S.view] ? TITLES[S.view] + ' · ' : ''}Ponto a Ponto`;
   VIEWS[S.view + '_after']?.();
 };
+hooks.beforeNav = player.stopPlayer;
 hooks.toast = ui.toast;
 
-function openAdd() { ui.toast('Em breve'); }
+Object.assign(window, core, ui, ...MODULES.map(m => m.handlers || {}));
 
-Object.assign(window, core, ui, { ai }, { openAdd }, ...MODULES.map(m => m.handlers || {}));
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#layer').innerHTML) { player.stopPlayer(); ui.closeLayer(); }
+});
+window.addEventListener('error', e => console.error(e.error || e.message));
 
 core.loadLocal();
 navigator.storage?.persist?.().catch(() => {});
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e)));
 }
 core.render();

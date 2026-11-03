@@ -1,5 +1,6 @@
 /* Ponto a Ponto — cliente da API Anthropic (chave do próprio utilizador, só neste dispositivo) */
 import { S, PK, PN, CHECK, dayKey, TODAY, pillarScores, currentFocus, upcomingTournament, saveProfile } from './core.js';
+import { $, esc, toast, spin, item, group } from './ui.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const AI_LS = 'pap_ai';
@@ -150,6 +151,25 @@ export function context(n = 12) {
   const sc = pillarScores(), p = S.profile, f = currentFocus(), d = S.state.days[TODAY()], t = upcomingTournament();
   const goals = S.state.goals.filter(g => !g.done).map(g => `- [${g.area}] ${g.title} (${g.kind}${g.deadline ? ', até ' + g.deadline : ''}, ${g.progress || 0}%)`).join('\n');
   return `PERFIL:\n${profileText()}\n\nPERFIL MENTAL ATUAL (1-10): ${PK.map(k => `${PN[k]} ${sc[k] != null ? sc[k].toFixed(1) : '-'}`).join('; ')}\nFoco atual: ${f ? f.text : '-'}. Palavras-chave: ${(p.cues || []).join(', ')}\n${d ? `Plano de hoje: competência ${PN[d.plan.pillar]}${d.plan.matchDay ? ' (dia de jogo)' : ''}.` : ''}\n${t ? `Próximo torneio: ${t.name} (${t.start}, ${t.surface || ''}). Objetivo: ${t.goal || '-'}` : ''}\n\nOBJETIVOS ATIVOS:\n${goals || '-'}\n\nO QUE JÁ SABES DESTE JOGADOR (memória do coach):\n${(p.coachMemory || []).map(m => '- ' + m.t).join('\n') || '-'}\n\nREGISTOS RECENTES (mais recente primeiro):\n${S.entries.slice(0, n).map(entryLine).join('\n') || '(sem registos)'}\n\nHoje é ${new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`;
+}
+
+/* ===== ajudas de interface ===== */
+/** Corre fn com o botão em estado "a carregar"; mostra o erro num toast. */
+export async function aiBtn(btn, label, fn) {
+  const b = typeof btn === 'string' ? $(btn) : btn;
+  if (!hasAI()) { toast(aiErr({ code: 'no_key' }), 4000); return false; }
+  const old = b?.innerHTML;
+  if (b) { b.disabled = true; b.innerHTML = spin(label); }
+  let ok = true;
+  try { await fn(); } catch (e) { ok = false; console.warn(e); toast(aiErr(e), 4500); }
+  if (b && document.body.contains(b)) { b.disabled = false; b.innerHTML = old; }
+  return ok;
+}
+/** Linha que leva às Definições quando não há chave. */
+export const aiOff = (what = 'o coach') => group([item({ lead: 'key', title: 'Coach desligado', sub: `Cola a tua chave da API nas Definições para ativar ${what}.`, onclick: "go('settings')" })]);
+/** Blocos de texto de uma resposta JSON do coach. */
+export function aiSections(ai, map) {
+  return map.filter(([k]) => ai && ai[k] && (!Array.isArray(ai[k]) || ai[k].length)).map(([k, t]) => `<div class="ai-sect"><div class="t">${t}</div>${Array.isArray(ai[k]) ? `<ul>${ai[k].map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : `<div class="ai-text">${esc(ai[k])}</div>`}</div>`).join('');
 }
 
 /* ===== memória do coach ===== */

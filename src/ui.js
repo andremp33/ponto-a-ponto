@@ -64,9 +64,11 @@ export const spin = (t = '') => `<span class="spin" aria-hidden="true"></span>${
 export const checkRow = (on, text, onclick) => `<div class="check ${on ? 'on' : ''}" role="checkbox" aria-checked="${on}" tabindex="0" onclick="${onclick}" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"><span class="bx">${on ? ic('check') : ''}</span><span>${text}</span></div>`;
 
 /* ===== formulários ===== */
-export function slider(name, label, val = 5, sub = '', { min = 1, max = 10, step = 1 } = {}) {
+/** Número com uma casa decimal, à portuguesa (6,4). */
+export const f1 = v => v == null || isNaN(v) ? '–' : (+v).toFixed(1).replace('.', ',');
+export function slider(name, label, val = 5, sub = '', { min = 1, max = 10, step = 1, suffix = '', onchange = '' } = {}) {
   const p = ((val - min) / (max - min)) * 100;
-  return `<div class="slider"><div class="lab"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><span class="v" id="v_${name}">${val}</span></div><input type="range" min="${min}" max="${max}" step="${step}" name="${name}" value="${val}" aria-label="${esc(label)}" style="--p:${p}%" oninput="sliderInput(this)"></div>`;
+  return `<div class="slider"><div class="lab"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><span class="v" id="v_${name}">${val}${suffix}</span></div><input type="range" min="${min}" max="${max}" step="${step}" name="${name}" value="${val}" aria-label="${esc(label)}" style="--p:${p}%" ${suffix ? `data-suffix="${suffix}"` : ''} oninput="sliderInput(this)" ${onchange ? `onchange="${onchange}"` : ''}></div>`;
 }
 export function sliderInput(el) {
   const min = +el.min, max = +el.max, v = +el.value;
@@ -136,10 +138,10 @@ export function radar(el, series) {
   const desc = [];
   series.forEach(s => {
     const vals = PK.map(k => +s.values?.[k] || 0); if (!vals.some(Boolean)) return;
-    desc.push(`${s.name}: ${PK.map((k, i) => `${PN[k]} ${vals[i] ? vals[i].toFixed(1) : '–'}`).join(', ')}`);
+    desc.push(`${s.name}: ${PK.map((k, i) => `${PN[k]} ${vals[i] ? f1(vals[i]) : '–'}`).join(', ')}`);
     const pts = vals.map((v, i) => pt(i, v).join(',')).join(' ');
     g += `<polygon points="${pts}" fill="${s.dash ? 'none' : s.color}" fill-opacity="${s.dash ? 0 : 0.1}" stroke="${s.color}" stroke-width="2" ${s.dash ? 'stroke-dasharray="4 4"' : ''} stroke-linejoin="round"/>`;
-    if (!s.dash) vals.forEach((v, i) => { const [x, y] = pt(i, v); g += `<circle cx="${x}" cy="${y}" r="4.5" fill="${s.color}" stroke="${C.paper}" stroke-width="2"><title>${PN[PK[i]]}: ${v.toFixed(1)}</title></circle>`; });
+    if (!s.dash) vals.forEach((v, i) => { const [x, y] = pt(i, v); g += `<circle cx="${x}" cy="${y}" r="4.5" fill="${s.color}" stroke="${C.paper}" stroke-width="2"><title>${PN[PK[i]]}: ${f1(v)}</title></circle>`; });
   });
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin:0 auto;overflow:visible" role="img" aria-label="${esc('Perfil mental. ' + desc.join('. '))}">${g}</svg>`;
 }
@@ -148,12 +150,12 @@ export function lineChart(el, series, opts = {}) {
   if (!el) return;
   const W = el.clientWidth || 320, H = 180, pl = 30, pr = 14, pt = 16, pb = 26;
   const n = Math.max(...series.map(s => s.values.length)); if (n < 1) return;
-  const mn = opts.min ?? 1, mx = opts.max ?? 10, fmt = opts.fmt || (v => (+v).toFixed(1));
+  const mn = opts.min ?? 1, mx = opts.max ?? 10, fmt = opts.fmt || f1;
   const x = i => n === 1 ? pl + (W - pl - pr) / 2 : pl + i * (W - pl - pr) / (n - 1);
   const y = v => pt + (mx - v) * (H - pt - pb) / (mx - mn);
   const ticks = [mn, mn + (mx - mn) / 3, mn + 2 * (mx - mn) / 3, mx].map(v => Math.round(v * 10) / 10);
   let g = '';
-  ticks.forEach(v => { g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}"/><text x="${pl - 8}" y="${y(v) + 4}" fill="${C.ink3}" font-size="11" text-anchor="end">${(mx - mn) < 6 ? v.toFixed(1) : Math.round(v)}</text>`; });
+  ticks.forEach(v => { g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}"/><text x="${pl - 8}" y="${y(v) + 4}" fill="${C.ink3}" font-size="11" text-anchor="end">${(mx - mn) < 6 ? f1(v) : Math.round(v)}</text>`; });
   const labels = opts.labels || [];
   [0, n - 1].forEach(i => { if (labels[i] && !(i === n - 1 && n === 1 && i !== 0)) g += `<text x="${x(i)}" y="${H - 6}" fill="${C.ink3}" font-size="11" text-anchor="${n === 1 ? 'middle' : i === 0 ? 'start' : 'end'}">${esc(labels[i])}</text>`; });
   let p = '';
